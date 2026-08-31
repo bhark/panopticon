@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -28,24 +27,13 @@ from panopticon.store import (
     restore_agent,
     snapshot,
 )
+from tests.conftest import make_git_repo
 
 GOAL = "prove the harness closes a task and banks a truth"
 
 
-def git_repo(path: Path) -> Path:
-    path.mkdir(parents=True, exist_ok=True)
-    for argv in (
-        ["git", "init", "-q"],
-        ["git", "config", "user.email", "t@t"],
-        ["git", "config", "user.name", "t"],
-        ["git", "commit", "-q", "--allow-empty", "-m", "root"],
-    ):
-        subprocess.run(argv, cwd=path, check=True, capture_output=True)
-    return path
-
-
 def build(tmp_path: Path, policy) -> Orchestrator:
-    repo = git_repo(tmp_path / "repo")
+    repo = make_git_repo(tmp_path / "repo")
     store = Store(repo / STATE_DIRNAME)
     return Orchestrator(
         goal=GOAL,
@@ -240,7 +228,7 @@ async def test_an_agent_survives_its_own_worktree_being_removed(tmp_path):
 async def test_resuming_a_settled_session_closes_without_spending_a_turn(tmp_path):
     """Resuming a finished run used to wake every released agent and call its provider."""
     provider = MockProvider(lambda req: Action("wait", {}))
-    repo = git_repo(tmp_path / "repo")
+    repo = make_git_repo(tmp_path / "repo")
     store = Store(repo / STATE_DIRNAME)
     agents = [
         Agent(name=n, provider="mock", situation=Situation.RELEASED, voted_goal_reached=True)

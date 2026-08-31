@@ -423,7 +423,8 @@ class Orchestrator:
     async def _autosave(self) -> None:
         while True:
             await asyncio.sleep(AUTOSAVE_SECONDS)
-            self.save()
+            state = store_mod.snapshot(self)
+            await asyncio.to_thread(self.store.save, state)
 
     async def _idle_watchdog(self) -> None:
         """Every agent may legitimately wait forever; the harness as a whole may not."""

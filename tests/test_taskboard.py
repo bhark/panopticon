@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 import pytest
 
-from panopticon.model import Agent, Event, QueueItem, Situation
+from panopticon.model import Situation
 from panopticon.services.janitor import Janitor
 from panopticon.services.taskboard import TaskBoard
+from tests.fakes import FakeHarness
 
 
 def board_with_task(roles: list[str]) -> tuple[TaskBoard, str]:
@@ -129,47 +131,18 @@ def test_render_shows_open_seats_and_caps_the_archive():
 # janitor
 
 
-class FakeHarness:
-    def __init__(self, board: TaskBoard) -> None:
-        self.board = board
-        self.agents: dict[str, Agent] = {}
-        self.posted: list[tuple[str, QueueItem]] = []
-        self.events: list[Event] = []
-
-    def add(self, name: str, situation: Situation = Situation.WAITING_FOR_SEATS) -> Agent:
-        self.agents[name] = Agent(name=name, provider="test", situation=situation)
-        return self.agents[name]
-
-    def post(self, recipient: str, item: QueueItem) -> None:
-        self.posted.append((recipient, item))
-
-    def emit(self, event: Event) -> None:
-        self.events.append(event)
-
-    def leave_task(self, name: str, task, why: str, notify: bool = True) -> None:
-        self.board.unassign(name, task.id)
-        if agent := self.agents.get(name):
-            agent.task_id = None
-            agent.situation = Situation.IDLE
-        if notify:
-            self.post(
-                name, QueueItem(kind="task", text=f"You have been unassigned from {task.id}: {why}")
-            )
-        self.events.append(Event(kind="seat", text=f"{name} left {task.id}: {why}", agent=name))
-
-
-def waiting_seat(minutes: float) -> tuple[FakeHarness, str, float]:
+def waiting_seat(tmp_path: Path, minutes: float) -> tuple[FakeHarness, str, float]:
     board, task_id = board_with_task(["impl", "review"])
-    harness = FakeHarness(board)
-    harness.add("ada")
+    harness = FakeHarness(tmp_path / "repo", names=("ada", "bo"), board=board)
+    harness.agents["ada"].situation = Situation.WAITING_FOR_SEATS
     board.assign("ada", task_id, "impl")
     now = time.time()
     board.get(task_id).seat_of("ada").assigned_at = now - minutes * 60
     return harness, task_id, now
 
 
-def test_nudges_fire_once_per_threshold_then_the_seat_expires():
-    harness, task_id, now = waiting_seat(minutes=15)
+def test_nudges_fire_once_per_threshold_then_the_seat_expires(tmp_path):
+    harness, task_id, now = waiting_seat(tmp_path, minutes=15)
     janitor = Janitor(harness)
 
     janitor.tick(now)
@@ -188,10 +161,9 @@ def test_nudges_fire_once_per_threshold_then_the_seat_expires():
     assert harness.events
 
 
-def test_a_running_task_is_never_nudged():
-    harness, task_id, now = waiting_seat(minutes=50)
+def test_a_running_task_is_never_nudged(tmp_path):
+    harness, task_id, now = waiting_seat(tmp_path, minutes=50)
     task = harness.board.get(task_id)
-    harness.add("bo")
     harness.board.assign("bo", task_id, "review")
     harness.board.start(task, "wt")
 
@@ -201,8 +173,8 @@ def test_a_running_task_is_never_nudged():
     assert task.holders == ["ada", "bo"]
 
 
-def test_a_dead_agents_seat_is_released_without_nudging_it():
-    harness, task_id, now = waiting_seat(minutes=1)
+def test_a_dead_agents_seat_is_released_without_nudging_it(tmp_path):
+    harness, task_id, now = waiting_seat(tmp_path, minutes=1)
     harness.agents["ada"].situation = Situation.DEAD
 
     Janitor(harness).tick(now)

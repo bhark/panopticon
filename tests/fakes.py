@@ -35,11 +35,16 @@ class FakeWorktrees:
 class FakeHarness:
     """Records everything a tool does to it, and mirrors the two async transitions."""
 
-    def __init__(self, repo: Path, names: tuple[str, ...] = ("Ada", "Bo", "Cy")) -> None:
+    def __init__(
+        self,
+        repo: Path,
+        names: tuple[str, ...] = ("Ada", "Bo", "Cy"),
+        board: TaskBoard | None = None,
+    ) -> None:
         repo.mkdir(parents=True, exist_ok=True)
         self.goal = "Make the flaky integration suite pass."
         self.agents = {n: Agent(name=n, provider="fake") for n in names}
-        self.board = TaskBoard()
+        self.board = board or TaskBoard()
         self.kb = Knowledge()
         self.bus = Bus(lambda senders: None)
         self.worktrees = FakeWorktrees(repo)
@@ -102,8 +107,10 @@ class FakeHarness:
             for other in task.holders:
                 self.agents[other].situation = Situation.WAITING_FOR_SEATS
         if notify:
+            self.post(name, QueueItem("task", f"You have been unassigned from {task.id}: {why}."))
             for other in task.holders:
                 self.post(other, QueueItem("task", f"{name} {why}. Task {task.id} has stopped."))
+        self.emit(Event(kind="seat", text=f"{name} left {task.id}: {why}", agent=name))
         self.left.append((name, task.id, why))
 
     async def close_task(self, task: Task) -> None:

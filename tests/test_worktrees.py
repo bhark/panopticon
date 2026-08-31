@@ -18,16 +18,8 @@ def git(repo: Path, *args: str) -> str:
 
 
 @pytest.fixture
-def worktrees(tmp_path: Path) -> Worktrees:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    git(repo, "init", "-b", "main")
-    git(repo, "config", "user.email", "harness@panopticon.test")
-    git(repo, "config", "user.name", "panopticon")
-    (repo / "README.md").write_text("seed\n")
-    git(repo, "add", "README.md")
-    git(repo, "-c", "commit.gpgsign=false", "commit", "-m", "seed")
-    return Worktrees(repo, repo / ".panopticon" / "worktrees")
+def worktrees(git_repo: Path) -> Worktrees:
+    return Worktrees(git_repo, git_repo / ".panopticon" / "worktrees")
 
 
 async def test_create_gives_the_task_its_own_branch_and_checkout(worktrees: Worktrees):
