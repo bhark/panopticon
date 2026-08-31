@@ -210,3 +210,22 @@ def test_a_dead_agents_seat_is_released_without_nudging_it():
     assert harness.board.get(task_id).seats[0].holder is None
     assert harness.posted == []
     assert harness.events[0].agent == "ada"
+
+
+def test_the_board_catches_the_same_task_filed_twice_but_not_a_neighbouring_one():
+    """Agents acting at the same instant all file the task nobody has filed yet: in a live
+    run three agents opened three tasks for one job before any board event reached them."""
+    board = TaskBoard()
+    board.create("ada", "Add subtract(a, b) to calc.py and test it", "d", ["impl"])
+
+    assert board.duplicate_of("Add and test subtract") is not None
+    assert board.duplicate_of("Add subtract(a,b) to calc") is not None
+    # a different change to the same file is not the same task
+    assert board.duplicate_of("Add multiply to calc.py") is None
+    assert board.duplicate_of("Fix the parser crash") is None
+    assert board.duplicate_of("") is None
+
+    # once it is out of the way it stops blocking
+    task = board.get(next(iter(board.tasks)))
+    board.archive_task(task, "done")
+    assert board.duplicate_of("Add and test subtract") is None

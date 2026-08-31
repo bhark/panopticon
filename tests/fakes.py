@@ -25,6 +25,9 @@ class FakeBoard:
         self.tasks: dict[str, Task] = {}
         self._ids = itertools.count(1)
 
+    def duplicate_of(self, title: str) -> Task | None:
+        return next((t for t in self.tasks.values() if t.title == title), None)
+
     def create(self, creator: str, title: str, description: str, roles: list[str]) -> Task:
         task = Task(
             id=f"T{next(self._ids)}",

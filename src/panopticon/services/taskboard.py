@@ -12,6 +12,13 @@ def _slug(title: str) -> str:
     return "-".join(re.findall(r"[a-z0-9]+", title.lower()))[:24].strip("-") or "task"
 
 
+_NOISE = {"a", "an", "and", "the", "to", "in", "of", "for", "it", "is", "on", "with"}
+
+
+def _words(title: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z0-9]+", title.lower()) if w not in _NOISE}
+
+
 def _ago(then: float, now: float) -> str:
     seconds = int(now - then)
     if seconds < 60:
@@ -47,6 +54,20 @@ class TaskBoard:
 
     def task_of(self, agent: str) -> Task | None:
         return next((t for t in self.open_tasks() if t.seat_of(agent)), None)
+
+    def duplicate_of(self, title: str) -> Task | None:
+        """An open task saying the same thing. Agents acting at once all file the same task."""
+        mine = _words(title)
+        if not mine:
+            return None
+        for task in self.open_tasks():
+            theirs = _words(task.title)
+            if not theirs:
+                continue
+            shared = len(mine & theirs) / min(len(mine), len(theirs))
+            if shared >= 0.85:
+                return task
+        return None
 
     def render(self) -> str:
         """The view returned by the view_task_board tool."""

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from panopticon.model import ActionResult, ArgSpec, QueueItem, Situation, ToolCtx
+from panopticon.model import ActionResult, ArgSpec, QueueItem, Situation, Task, ToolCtx
 from panopticon.situations import (
     ASSIGN_SELF,
     CANCEL_FINALIZE,
@@ -14,6 +14,12 @@ from panopticon.situations import (
     VIEW_BOARD,
 )
 from panopticon.tools import tool
+
+
+def _tell_mates(ctx: ToolCtx, task: Task, text: str) -> None:
+    for name in task.holders:
+        if name != ctx.agent.name:
+            ctx.harness.post(name, QueueItem("task", text))
 
 
 @tool(
@@ -31,7 +37,8 @@ async def view_task_board(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     "Put a task on the board for anyone to take. One role per seat: the number of roles is the "
     "number of agents the task needs, and it cannot start until every seat is filled. Ask for "
     "the fewest seats that can actually do the work - one is usually right, and every extra "
-    "seat is an agent the task has to wait for. Creating a task does not put you on it.",
+    "seat is an agent the task has to wait for. Creating a task does not put you on it. Look at "
+    "the board first: if the work is already there, take a seat on it instead.",
     title=ArgSpec("string", "One line naming the work."),
     description=ArgSpec(
         "string",
@@ -50,6 +57,11 @@ async def create_task(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     title = args["title"].strip()
     if not title:
         return ActionResult.fail("title must not be empty.")
+    if twin := ctx.harness.board.duplicate_of(title):
+        return ActionResult.fail(
+            f"{twin.id} is already on the board saying the same thing: {twin.title}. "
+            f"Take a seat on it instead, or say something different."
+        )
     task = ctx.harness.board.create(ctx.agent.name, title, args["description"].strip(), roles)
     ctx.harness.broadcast(
         QueueItem(
@@ -87,15 +99,7 @@ async def assign_self(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
         return ActionResult.fail(str(exc))
 
     agent.task_id = task.id
-    for name in task.holders:
-        if name != agent.name:
-            harness.post(
-                name,
-                QueueItem(
-                    "task",
-                    f"{agent.name} took the {role} seat on task {task.id} alongside you.",
-                ),
-            )
+    _tell_mates(ctx, task, f"{agent.name} took the {role} seat on task {task.id} alongside you.")
     if not ready:
         agent.situation = Situation.WAITING_FOR_SEATS
         open_roles = [s.role for s in task.seats if not s.holder]
@@ -149,16 +153,12 @@ async def finalize_task(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
 
     if not agreed:
         waiting = [s.role for s in task.seats if not s.finalization]
-        for name in task.holders:
-            if name != agent.name:
-                harness.post(
-                    name,
-                    QueueItem(
-                        "task",
-                        f"{agent.name} finalized their seat on task {task.id}: "
-                        f"{args['conclusion'].strip()}. Still to finalize: {', '.join(waiting)}.",
-                    ),
-                )
+        _tell_mates(
+            ctx,
+            task,
+            f"{agent.name} finalized their seat on task {task.id}: "
+            f"{args['conclusion'].strip()}. Still to finalize: {', '.join(waiting)}.",
+        )
         return ActionResult(
             True,
             f"Finalized from your seat. The task ends when these seats do too: "
@@ -181,14 +181,9 @@ async def cancel_finalize(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
         task = harness.board.cancel_finalize(agent.name, args["task_id"].strip())
     except ValueError as exc:
         return ActionResult.fail(str(exc))
-    for name in task.holders:
-        if name != agent.name:
-            harness.post(
-                name,
-                QueueItem(
-                    "task",
-                    f"{agent.name} withdrew their finalization on task {task.id}. It is not "
-                    f"ending yet.",
-                ),
-            )
+    _tell_mates(
+        ctx,
+        task,
+        f"{agent.name} withdrew their finalization on task {task.id}. It is not ending yet.",
+    )
     return ActionResult(True, f"Your finalization on task {task.id} is withdrawn.")
