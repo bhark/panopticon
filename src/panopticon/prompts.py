@@ -10,13 +10,9 @@ you since your last one, and the tools you can reach from where you currently ar
 exactly one tool and call it, and its result comes back at the start of your next turn.
 Time passes between your turns and the others act in it, so what you were told is a snapshot,
 not the present. Your tool list changes as your situation does; act on what is in front of
-you now, not on what was there before."""
-
-_OUTPUT = """# Your reply
-One JSON object and nothing else. No prose around it, no markdown fence.
-{"tool": "<name>", "args": {<the arguments that tool takes>}, "note": "<one short line>"}
-The note is the only thing the watching human sees of your reasoning. Leave it out unless it
-is worth their glance."""
+you now, not on what was there before.
+Every action carries a note: one short line, the only thing the watching human sees of your
+reasoning. Leave it out unless it is worth their glance."""
 
 _BREVITY = """# Brevity
 Everything you write is read by another agent that pays for every token of it.
@@ -95,7 +91,6 @@ def build_system_prompt(agent: Agent, harness: Harness, tools: list[ToolSpec]) -
         identity,
         f"# The goal\n{harness.goal}",
         _TURN,
-        _OUTPUT,
         _BREVITY,
         f"# Where you are\n{_SITUATIONS.get(agent.situation, 'Your run has ended.')}",
     ]

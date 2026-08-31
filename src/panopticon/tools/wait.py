@@ -7,9 +7,9 @@ import time
 from typing import Any
 
 from panopticon.model import ActionResult, ArgSpec, Situation, ToolCtx
-from panopticon.situations import WAIT
-from panopticon.tools import tool
+from panopticon.tools.registry import EVERYWHERE, tool
 
+WAIT = "wait"
 CAP_MINUTES = 5
 # situations where the agent has a job in front of it and nothing is bound to ever wake it
 _HOLDING_WORK = (Situation.ON_TASK, Situation.CLOSING_TASK, Situation.JURY)
@@ -20,6 +20,7 @@ _HOLDING_WORK = (Situation.ON_TASK, Situation.CLOSING_TASK, Situation.JURY)
     "Do nothing this turn. Use it when there is nothing useful for you to do right now and "
     "you would rather let others act than invent work. Anything arriving for you - a message, "
     "a task board event, jury work - wakes you.",
+    situations=EVERYWHERE,
     minutes=ArgSpec(
         "int",
         "Wake again after this many minutes even if nothing arrives. Omit to sleep until "

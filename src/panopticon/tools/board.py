@@ -4,16 +4,33 @@ from __future__ import annotations
 
 from typing import Any
 
-from panopticon.model import ActionResult, ArgSpec, QueueItem, Situation, Task, ToolCtx
-from panopticon.situations import (
-    ASSIGN_SELF,
-    CANCEL_FINALIZE,
-    CREATE_TASK,
-    FINALIZE_TASK,
-    UNASSIGN_SELF,
-    VIEW_BOARD,
+from panopticon.model import (
+    ActionResult,
+    Agent,
+    ArgSpec,
+    Harness,
+    QueueItem,
+    Situation,
+    Task,
+    ToolCtx,
 )
-from panopticon.tools import tool
+from panopticon.tools.registry import tool
+
+VIEW_BOARD = "view_task_board"
+CREATE_TASK = "create_task"
+ASSIGN_SELF = "assign_self"
+UNASSIGN_SELF = "unassign_self"
+FINALIZE_TASK = "finalize_task"
+CANCEL_FINALIZE = "cancel_finalize"
+
+_SEATED = (Situation.WAITING_FOR_SEATS, Situation.ON_TASK)
+_BOARD_READERS = (*_SEATED, Situation.IDLE, Situation.CLOSING_TASK)
+
+
+def _has_finalized(agent: Agent, harness: Harness) -> bool:
+    task = harness.board.get(agent.task_id or "")
+    seat = task.seat_of(agent.name) if task else None
+    return bool(seat and seat.finalization)
 
 
 def _tell_mates(ctx: ToolCtx, task: Task, text: str) -> None:
@@ -27,6 +44,7 @@ def _tell_mates(ctx: ToolCtx, task: Task, text: str) -> None:
     "Show the task board: open tasks with their seats, the role of each seat and who holds it, "
     "plus the most recent archived tasks. Read it before you create a task, so you do not "
     "duplicate one that already exists.",
+    situations=_BOARD_READERS,
 )
 async def view_task_board(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     return ActionResult(True, ctx.harness.board.render())
@@ -39,6 +57,7 @@ async def view_task_board(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     "the fewest seats that can actually do the work - one is usually right, and every extra "
     "seat is an agent the task has to wait for. Creating a task does not put you on it. Look at "
     "the board first: if the work is already there, take a seat on it instead.",
+    situations=(Situation.IDLE,),
     title=ArgSpec("string", "One line naming the work."),
     description=ArgSpec(
         "string",
@@ -83,6 +102,7 @@ async def create_task(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     "Take an open seat on a task, by the role of that seat. If yours fills the last seat the "
     "task starts at once: everyone on it gets a fresh context and a git worktree of their own. "
     "If seats are still open you wait, and you can keep acting while you do.",
+    situations=(Situation.IDLE,),
     task_id=ArgSpec("string", "The task id as it appears on the board."),
     role=ArgSpec("string", "The role of the seat you want, exactly as it appears on the board."),
 )
@@ -118,6 +138,7 @@ async def assign_self(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     "Give up your seat. If the task was still waiting for seats it goes back to open. If it was "
     "already running it stops for everyone on it until your seat is filled again, so tell them "
     "why before you do this.",
+    situations=_SEATED,
     task_id=ArgSpec("string", "The task you are leaving."),
 )
 async def unassign_self(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
@@ -138,6 +159,8 @@ async def unassign_self(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     "others are told that you did and can follow or not. Until they all do you can take it "
     f"back with {CANCEL_FINALIZE}. Both fields are read by the agent that closes the task out, "
     "so make them short and factual.",
+    situations=(Situation.ON_TASK,),
+    when=lambda agent, harness: not _has_finalized(agent, harness),
     task_id=ArgSpec("string", "The task you are finalizing."),
     reason=ArgSpec("string", "One line: why this is done."),
     conclusion=ArgSpec("string", "One line: what is now true that was not before."),
@@ -173,6 +196,8 @@ async def finalize_task(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     CANCEL_FINALIZE,
     "Withdraw your finalization, because the task is not done after all. Say why to the others; "
     "they finalized or are about to, and they cannot see your reasoning.",
+    situations=(Situation.ON_TASK,),
+    when=_has_finalized,
     task_id=ArgSpec("string", "The task you are un-finalizing."),
 )
 async def cancel_finalize(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:

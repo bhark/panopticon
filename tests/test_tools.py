@@ -9,25 +9,18 @@ from pathlib import Path
 import pytest
 
 from panopticon.model import Action, Entry, Situation, ToolCtx
-from panopticon.situations import (
-    ASSIGN_SELF,
-    BASH,
-    CANCEL_FINALIZE,
-    EDIT_FILE,
-    FINALIZE_TASK,
-    JOIN_JURY,
-    READ_FILE,
-    RELIEVE_SELF,
-    SEND_DM,
-    SUBMIT_VERDICT,
-    UNASSIGN_SELF,
-    VOTE_GOAL_REACHED,
-    WAIT,
-    WRITE_FILE,
-    tool_names,
-)
-from panopticon.tools import dispatch
+from panopticon.tools import dispatch, tools_for
+from panopticon.tools.board import ASSIGN_SELF, CANCEL_FINALIZE, FINALIZE_TASK, UNASSIGN_SELF
+from panopticon.tools.comms import SEND_DM
+from panopticon.tools.jury import JOIN_JURY, SUBMIT_VERDICT
+from panopticon.tools.lifecycle import RELIEVE_SELF, VOTE_GOAL_REACHED
+from panopticon.tools.wait import WAIT
+from panopticon.tools.workspace import BASH, EDIT_FILE, READ_FILE, WRITE_FILE
 from tests.fakes import FakeHarness, seat_everyone
+
+
+def tool_names(agent, harness: FakeHarness) -> list[str]:
+    return [spec.name for spec in tools_for(agent, harness)]
 
 
 async def run(harness: FakeHarness, name: str, tool: str, **args):
@@ -303,7 +296,7 @@ async def test_you_cannot_judge_your_own_submission_but_can_judge_another(tmp_pa
     ).ok
     submission_id = next(iter(h.kb.pending))
 
-    # the situation table hides it, and the handler refuses it anyway
+    # the situation hides it, and the handler refuses it anyway
     assert JOIN_JURY not in tool_names(h.agents["Ada"], h)
     mine = await dispatch(
         ToolCtx(h.agents["Ada"], h),

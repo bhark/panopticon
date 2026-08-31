@@ -5,8 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 from panopticon.model import ActionResult, ArgSpec, QueueItem, ToolCtx
-from panopticon.situations import SEND_DM, SHOUT, VIEW_SHOUTBOARD
-from panopticon.tools import tool
+from panopticon.tools.registry import EVERYWHERE, tool
+
+SEND_DM = "send_direct_message"
+SHOUT = "send_shoutboard_message"
+VIEW_SHOUTBOARD = "view_shoutboard"
 
 
 @tool(
@@ -14,6 +17,7 @@ from panopticon.tools import tool
     "Send one agent a message by name. It lands in their queue and they read it on their next "
     "turn, so do not expect an answer this turn. Write only what they need in order to act: no "
     "greeting, no sign-off, no repeating what they already know. One or two lines.",
+    situations=EVERYWHERE,
     to=ArgSpec("string", "The name of the agent you are writing to."),
     body=ArgSpec("string", "The message."),
 )
@@ -46,6 +50,7 @@ async def send_direct_message(ctx: ToolCtx, args: dict[str, Any]) -> ActionResul
     "harness needs - a finding, a warning, a claim on an area of work - not for chatter or "
     "status. Everyone is notified once the board goes quiet, not once per message, so a burst "
     "of shouts costs everyone one interruption. Keep it to a line or two.",
+    situations=EVERYWHERE,
     body=ArgSpec("string", "What you are telling everyone."),
 )
 async def send_shoutboard_message(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
@@ -60,6 +65,7 @@ async def send_shoutboard_message(ctx: ToolCtx, args: dict[str, Any]) -> ActionR
     VIEW_SHOUTBOARD,
     "Read the shoutboard: who wrote what, newest first. Old messages fall off it, so read it "
     "when you are told there is something new rather than saving it up.",
+    situations=EVERYWHERE,
 )
 async def view_shoutboard(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     return ActionResult(True, ctx.harness.bus.render_shoutboard())

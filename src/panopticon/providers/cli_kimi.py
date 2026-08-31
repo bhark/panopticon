@@ -1,9 +1,10 @@
 """Kimi as a pure reasoning engine.
 
 Verified against kimi 0.39.1. No schema support and no system-prompt flag, so the system
-prompt is prepended and the shape is spelled out in words at the end of the prompt. Left
-to itself kimi invents its own shape, so the reminder is not optional; when it still gets
-it wrong we reprompt once with the parse error and then give up.
+prompt is prepended and the shape is spelled out in words at the end of the prompt. SHAPE
+is the only place the action envelope is stated for this provider - the others get it from
+their schema - and left to itself kimi invents its own shape, so the reminder is not
+optional; when it still gets it wrong we reprompt once with the parse error and give up.
 
 Its NDJSON is keyed on `role`, not `type`, and it reports no usage at all, which leaves
 the transcript's character estimate as the only context figure for this provider.

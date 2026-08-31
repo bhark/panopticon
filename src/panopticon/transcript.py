@@ -21,7 +21,7 @@ import json
 from panopticon.model import Action, Agent, Entry, QueueItem, Usage
 from panopticon.providers.base import Provider
 
-TAIL = "Take exactly one action. Reply with the action JSON and nothing else."
+TAIL = "Take exactly one action."
 
 # absolute buffers, not percentages: a percentage of a 1M window reserves half a run
 RESERVE_TOKENS = 24_000

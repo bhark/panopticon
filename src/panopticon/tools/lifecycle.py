@@ -5,8 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 from panopticon.model import ActionResult, ArgSpec, QueueItem, Situation, ToolCtx
-from panopticon.situations import MARK_DONE, REJOIN, RELIEVE_SELF, VOTE_GOAL_REACHED
-from panopticon.tools import tool
+from panopticon.tools.registry import EVERYWHERE, tool
+
+VOTE_GOAL_REACHED = "vote_goal_reached"
+REJOIN = "rejoin"
+RELIEVE_SELF = "relieve_self"
+MARK_DONE = "mark_integration_done"
 
 
 @tool(
@@ -15,6 +19,7 @@ from panopticon.tools import tool
     f"message tools and {REJOIN}, and you take no more work until you retract. The whole "
     "session ends when every agent has voted. Vote when the goal is actually met, not when your "
     "own part of it is and not to get out of work you find hard.",
+    situations=(Situation.IDLE,),
     note=ArgSpec("string", "One line: why you hold that the goal is reached."),
 )
 async def vote_goal_reached(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
@@ -47,6 +52,7 @@ async def vote_goal_reached(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     REJOIN,
     "Retract your goal-reached vote and come back to the work with a clean context. Do this if "
     "you learn the goal is not reached after all, or if another agent needs you.",
+    situations=(Situation.RELEASED,),
 )
 async def rejoin(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     harness, agent = ctx.harness, ctx.agent
@@ -71,6 +77,8 @@ async def rejoin(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     "Leave the Panopticon without voting that the goal is reached. Available only because the "
     "human has ended the session. Your loop stops for good: no rejoining, no messages. Use it "
     "once your work is wrapped up and handed over.",
+    situations=EVERYWHERE,
+    when=lambda agent, harness: harness.force_ending,
 )
 async def relieve_self(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     harness, agent = ctx.harness, ctx.agent
@@ -91,6 +99,7 @@ async def relieve_self(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     "Call this when the task you are closing out is fully integrated: its git worktree is dealt "
     "with, and everyone who needed to know has been told. It archives the task and ends your "
     "run. Do not call it with anything left open.",
+    situations=(Situation.CLOSING_TASK,),
     summary=ArgSpec(
         "string",
         "One or two lines for the archive: what happened to the work and to the worktree.",

@@ -10,8 +10,16 @@ from pathlib import Path
 from typing import Any
 
 from panopticon.model import ActionResult, ArgSpec, Situation, ToolCtx
-from panopticon.situations import BASH, EDIT_FILE, READ_FILE, WRITE_FILE
-from panopticon.tools import tool
+from panopticon.tools.registry import tool
+
+BASH = "bash"
+READ_FILE = "read_file"
+WRITE_FILE = "write_file"
+EDIT_FILE = "edit_file"
+
+_WRITERS = (Situation.ON_TASK, Situation.CLOSING_TASK)
+# the jury looks but never touches
+_LOOKERS = (*_WRITERS, Situation.JURY)
 
 DEFAULT_TIMEOUT = 120
 MAX_TIMEOUT = 600
@@ -59,6 +67,7 @@ def _truncate(text: str, limit: int = MAX_OUTPUT) -> str:
     "combined, truncated in the middle if it is long, so pipe through grep or head rather than "
     "dumping whole files. On jury duty this is for gathering evidence only: look at what is "
     "there, do not run tests, do not build, do not change anything.",
+    situations=_LOOKERS,
     command=ArgSpec("string", "The command line, run through the shell."),
     timeout=ArgSpec(
         "int",
@@ -102,6 +111,7 @@ async def bash(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     READ_FILE,
     "Read a file in your working tree, with line numbers. Long files come back truncated, so "
     "use offset and limit to walk a big one rather than pulling it all in.",
+    situations=_LOOKERS,
     path=ArgSpec("string", "Path to the file, relative to your working tree."),
     offset=ArgSpec("int", "First line to show, 1-based. Default 1.", required=False),
     limit=ArgSpec("int", f"How many lines to show. Default {MAX_LINES}.", required=False),
@@ -143,6 +153,7 @@ async def read_file(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     "Write a file in your working tree, creating it and any missing directories, replacing it "
     "whole if it is already there. Read it first if it exists; you are overwriting work that "
     "may not be yours.",
+    situations=_WRITERS,
     path=ArgSpec("string", "Path to the file, relative to your working tree."),
     content=ArgSpec("string", "The full new contents of the file."),
 )
@@ -171,6 +182,7 @@ async def write_file(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     "Replace one exact stretch of text in a file. `old` has to match the file byte for byte, "
     "whitespace included, and has to appear exactly once - if it appears twice the edit is "
     "refused rather than guessed at, so include the surrounding lines that make it unique.",
+    situations=_WRITERS,
     path=ArgSpec("string", "Path to the file, relative to your working tree."),
     old=ArgSpec("string", "The exact text to replace, unique within the file."),
     new=ArgSpec("string", "What to put in its place."),

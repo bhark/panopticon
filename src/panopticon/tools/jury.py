@@ -6,23 +6,46 @@ from typing import Any
 
 from panopticon.model import (
     ActionResult,
+    Agent,
     ArgSpec,
+    Harness,
     QueueItem,
     Situation,
     Submission,
     ToolCtx,
     VerdictCall,
 )
-from panopticon.situations import CANCEL_JURY, JOIN_JURY, LIST_JURY, SUBMIT_VERDICT
-from panopticon.tools import tool
+from panopticon.tools.registry import tool
+
+LIST_JURY = "list_jury_submissions"
+JOIN_JURY = "join_jury"
+SUBMIT_VERDICT = "submit_verdict"
+CANCEL_JURY = "cancel_jury"
 
 _CALLS = ", ".join(c.value for c in VerdictCall)
+
+_OFF_DUTY = (
+    Situation.IDLE,
+    Situation.WAITING_FOR_SEATS,
+    Situation.ON_TASK,
+    Situation.CLOSING_TASK,
+)
+
+
+def _judgeable(agent: Agent, harness: Harness) -> bool:
+    """Something waiting that this agent is allowed to judge: not its own, not one it holds."""
+    return any(
+        s.submitted_by != agent.name and agent.name not in s.jurors
+        for s in harness.kb.pending.values()
+    )
 
 
 @tool(
     LIST_JURY,
     "Show the truths waiting for a jury, with their submitters. Your own submissions are in "
     "there too, and you may not judge those.",
+    situations=(*_OFF_DUTY, Situation.JURY),
+    when=lambda agent, harness: agent.situation is Situation.JURY or _judgeable(agent, harness),
 )
 async def list_jury_submissions(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     return ActionResult(True, ctx.harness.kb.render_pending())
@@ -35,6 +58,8 @@ async def list_jury_submissions(ctx: ToolCtx, args: dict[str, Any]) -> ActionRes
     "read-only: read files and run shell commands to gather evidence, and only that. Do not run "
     "tests, do not build, do not change anything. This is a reasoning job against what is "
     "already there.",
+    situations=(Situation.IDLE,),
+    when=_judgeable,
     submission_id=ArgSpec("string", "The id of the submission you want to judge."),
 )
 async def join_jury(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
@@ -59,6 +84,7 @@ async def join_jury(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     "statement is wrong, not when it is merely awkward. 'restate' when the finding is real but "
     "the statement is not the right one: you write the replacement yourself, as one standalone "
     "claim, and it goes back to the jury from scratch. Your verdict ends your jury duty.",
+    situations=(Situation.JURY,),
     verdict=ArgSpec("string", f"One of: {_CALLS}."),
     reasoning=ArgSpec("string", "Short. What decided it, and the evidence if you gathered any."),
     restated_title=ArgSpec(
@@ -139,6 +165,7 @@ def _announce(ctx: ToolCtx, submission: Submission, outcome: str, call: VerdictC
     CANCEL_JURY,
     "Step off the jury without a verdict, leaving the submission for someone else. Use it when "
     "you cannot settle the question with what you can see, not when it is merely hard.",
+    situations=(Situation.JURY,),
 )
 async def cancel_jury(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     harness, agent = ctx.harness, ctx.agent

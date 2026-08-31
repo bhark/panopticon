@@ -9,7 +9,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from panopticon import prompts, situations, transcript
+from panopticon import prompts, transcript
 from panopticon import store as store_mod
 from panopticon.config import Config
 from panopticon.model import (
@@ -29,7 +29,7 @@ from panopticon.services.knowledge import Knowledge
 from panopticon.services.taskboard import TaskBoard
 from panopticon.services.worktrees import Worktrees
 from panopticon.store import Store
-from panopticon.tools import dispatch
+from panopticon.tools import dispatch, tools_for
 
 MAX_CONSECUTIVE_FAILURES = 4
 AUTOSAVE_SECONDS = 30
@@ -146,7 +146,7 @@ class Orchestrator:
                 transcript.append_inbox(agent, items)
             await self._maybe_compact(agent)
 
-            tools = situations.tools_for(agent, self)
+            tools = tools_for(agent, self)
             if not tools:
                 return
             request = TurnRequest(
@@ -214,7 +214,7 @@ class Orchestrator:
         provider = self.providers[agent.provider]
         if not transcript.needs_compaction(agent, provider):
             return
-        system = prompts.build_system_prompt(agent, self, situations.tools_for(agent, self))
+        system = prompts.build_system_prompt(agent, self, tools_for(agent, self))
         if await transcript.compact(agent, provider, system):
             self.emit(Event("compaction", "context compacted", agent.name))
 

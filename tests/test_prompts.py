@@ -6,7 +6,7 @@ from pathlib import Path
 
 from panopticon.model import Agent, Entry, QueueItem, Situation
 from panopticon.prompts import build_system_prompt, situation_preprompt
-from panopticon.situations import tools_for
+from panopticon.tools import tools_for
 from tests.fakes import FakeHarness, seat_everyone
 
 

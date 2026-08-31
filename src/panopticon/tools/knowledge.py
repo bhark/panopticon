@@ -4,9 +4,20 @@ from __future__ import annotations
 
 from typing import Any
 
-from panopticon.model import ActionResult, ArgSpec, QueueItem, ToolCtx
-from panopticon.situations import SUBMIT_TRUTH, VIEW_KB
-from panopticon.tools import tool
+from panopticon.model import ActionResult, ArgSpec, QueueItem, Situation, ToolCtx
+from panopticon.tools.registry import tool
+
+VIEW_KB = "view_knowledge_base"
+SUBMIT_TRUTH = "submit_truth"
+
+_ASSERTERS = (
+    Situation.IDLE,
+    Situation.WAITING_FOR_SEATS,
+    Situation.ON_TASK,
+    Situation.CLOSING_TASK,
+)
+# a truth needs the knowledge base read first, so nobody duplicates or contradicts one
+_READERS = (*_ASSERTERS, Situation.JURY)
 
 
 @tool(
@@ -15,6 +26,7 @@ from panopticon.tools import tool
     f"Read it before you assume anything. It also unlocks {SUBMIT_TRUTH}, because you cannot "
     "judge whether your own finding is new or contradicts what is already known until you have "
     "seen what is there.",
+    situations=_READERS,
 )
 async def view_knowledge_base(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     ctx.agent.seen_kb = True
@@ -30,6 +42,8 @@ async def view_knowledge_base(ctx: ToolCtx, args: dict[str, Any]) -> ActionResul
     "itself belongs in the title, in the most compact practical form you can write it - a "
     "claim, not a topic. The body is what another agent needs in order to use it, plus your "
     "proof. Written for agents, not humans: no prose, no hedging, nothing you have not checked.",
+    situations=_ASSERTERS,
+    when=lambda agent, harness: agent.seen_kb,
     title=ArgSpec(
         "string",
         "The truth itself, one short line, exact and practical. Not 'notes on the build' but "

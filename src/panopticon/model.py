@@ -296,3 +296,5 @@ class ToolSpec:
     description: str
     args: dict[str, ArgSpec]
     handler: Handler
+    situations: tuple[Situation, ...] = ()
+    when: Callable[[Agent, Harness], bool] | None = None
