@@ -66,8 +66,9 @@ class AgentScreen(LiveScreen):
         mark, style = agent_mark(agent)
         bar = Text(f"{mark} {agent.name}", style=f"bold {style}")
         bar.append(f"   {SITUATION_LABEL[agent.situation]}", style=SITUATION_STYLE[agent.situation])
-        bar.append(f"   {agent.provider}   {agent.turns} turns   {since(agent.born_at, now)}",
-                   style=DIM)
+        bar.append(
+            f"   {agent.provider}   {agent.turns} turns   {since(agent.born_at, now)}", style=DIM
+        )
         self.query_one("#detailbar", Static).update(bar)
 
         task = self.harness.board.tasks.get(agent.task_id or "")
@@ -127,8 +128,10 @@ class TaskScreen(LiveScreen):
             ("created", Text(f"{task.created_by} · {since(task.created_at, now)} ago", style=DIM)),
             (
                 "started",
-                Text(f"{since(task.started_at, now)} ago" if task.started_at else "not yet",
-                     style=DIM if task.started_at else FAINT),
+                Text(
+                    f"{since(task.started_at, now)} ago" if task.started_at else "not yet",
+                    style=DIM if task.started_at else FAINT,
+                ),
             ),
             (
                 "worktree",
@@ -144,5 +147,6 @@ class TaskScreen(LiveScreen):
             return
         closed = Text(f"closed {since(task.archived_at, now)} ago", style=GREEN)
         closer = Text(f"closer: {task.closer or 'none'}", style=AMBER if task.closer else FAINT)
-        archive.update(Group(closed, closer, Text(), Text(task.outcome or "no outcome recorded",
-                                                          style=INK)))
+        archive.update(
+            Group(closed, closer, Text(), Text(task.outcome or "no outcome recorded", style=INK))
+        )

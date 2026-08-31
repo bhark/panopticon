@@ -39,9 +39,7 @@ class ShoutboxScreen(ModalScreen[None]):
             with VerticalScroll(id="shouthistory"):
                 yield Static(id="shoutlog")
             yield Input(placeholder="shout at the panopticon", id="shoutinput")
-            yield Static(
-                Text("enter sends · escape closes", style=FAINT), id="shouthint"
-            )
+            yield Static(Text("enter sends · escape closes", style=FAINT), id="shouthint")
 
     def on_mount(self) -> None:
         self.query_one("#shoutdialog").border_title = "shoutbox"
@@ -126,8 +124,10 @@ class HelpScreen(ModalScreen[None]):
                 )
             )
             yield Static(
-                Text("a force end cannot be undone; agents then vote out or relieve themselves",
-                     style=RED)
+                Text(
+                    "a force end cannot be undone; agents then vote out or relieve themselves",
+                    style=RED,
+                )
             )
 
     def on_mount(self) -> None:

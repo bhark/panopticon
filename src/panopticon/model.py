@@ -165,6 +165,8 @@ class Submission:
     jurors: list[str] = field(default_factory=list)
     verdicts: list[Verdict] = field(default_factory=list)
     restated_from: str | None = None
+    # a restatement inherits the bar, so nobody judges their own claim reworded
+    barred: list[str] = field(default_factory=list)
 
 
 # messages

@@ -160,8 +160,9 @@ class PanopticonApp(App[None]):
             return
         self.paint.note()
         self.on_force_end()
-        self.notify("every agent has been told to wrap up", title="force ending",
-                    severity="warning")
+        self.notify(
+            "every agent has been told to wrap up", title="force ending", severity="warning"
+        )
 
     def _leave_confirmed(self, ok: bool | None) -> None:
         if ok:

@@ -13,8 +13,6 @@ class Knowledge:
         self.pending: dict[str, Submission] = {}
         self._submitted = 0
         self._accepted = 0
-        # a restatement inherits the bar, so nobody judges their own claim reworded
-        self._barred: dict[str, set[str]] = {}
 
     def render(self) -> str:
         if not self.truths:
@@ -41,15 +39,16 @@ class Knowledge:
 
     def submit(self, agent: str, title: str, body: str) -> Submission:
         self._submitted += 1
-        sub = Submission(id=f"s{self._submitted}", title=title, body=body, submitted_by=agent)
+        sub = Submission(
+            id=f"s{self._submitted}", title=title, body=body, submitted_by=agent, barred=[agent]
+        )
         self.pending[sub.id] = sub
-        self._barred[sub.id] = {agent}
         return sub
 
     def join(self, agent: str, submission_id: str) -> Submission:
         """Raises ValueError if the agent submitted it or is already seated."""
         sub = self._waiting(submission_id)
-        if agent in self._barred[sub.id]:
+        if agent in sub.barred:
             raise ValueError(f"{sub.id} is your own statement, you cannot judge it")
         if agent in sub.jurors:
             raise ValueError(f"you are already on the jury for {sub.id}")
@@ -74,7 +73,7 @@ class Knowledge:
     ) -> tuple[Submission, str]:
         """Returns (submission, outcome) where outcome is accepted|rejected|restated|pending."""
         sub = self._waiting(submission_id)
-        if agent in self._barred[sub.id]:
+        if agent in sub.barred:
             raise ValueError(f"{sub.id} is your own statement, you cannot judge it")
         if agent not in sub.jurors:
             raise ValueError(f"you are not on the jury for {sub.id}")
@@ -118,15 +117,14 @@ class Knowledge:
             submitted_by=agent,
             jurors=[j for j in sub.jurors if j != agent],
             restated_from=sub.id,
+            barred=[*sub.barred, agent],
         )
-        self._barred[replacement.id] = self._barred[sub.id] | {agent}
         self._drop(sub)
         self.pending[replacement.id] = replacement
         return replacement
 
     def _drop(self, sub: Submission) -> None:
         self.pending.pop(sub.id, None)
-        self._barred.pop(sub.id, None)
 
     def _waiting(self, submission_id: str) -> Submission:
         sub = self.pending.get(submission_id)

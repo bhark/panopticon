@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import math
 import sys
 from pathlib import Path
+
+import pytest
 
 from panopticon.model import Action, Entry, Situation, ToolCtx
 from panopticon.situations import (
@@ -402,3 +405,19 @@ async def test_the_closer_archives_the_task_and_retires(tmp_path):
     assert task.archived_at and task.outcome == "merged, worktree removed"
     assert h.retired == ["Cy"]
     assert closer.situation is Situation.RELIEVED
+
+
+@pytest.mark.asyncio
+async def test_waiting_forever_is_capped_while_you_hold_a_task_seat(tmp_path):
+    """A live run stalled on this: an agent on a running task waited indefinitely, and
+    nothing was bound to ever wake it, so the task sat there with nobody working it."""
+    h = harness(tmp_path)
+    idle, seated = h.agents["Ada"], h.agents["Bo"]
+    seated.situation = Situation.ON_TASK
+
+    assert (await run(h, "Ada", WAIT)).ok
+    assert idle.wake_at == math.inf
+
+    result = await run(h, "Bo", WAIT)
+    assert result.ok and "leave the seat" in result.text
+    assert seated.wake_at is not None and seated.wake_at != math.inf

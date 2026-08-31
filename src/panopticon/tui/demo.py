@@ -116,17 +116,14 @@ def transcript(rng: random.Random, name: str, count: int, now: float) -> list[En
     at = now - count * 22
     for turn in range(1, count + 1):
         at += rng.uniform(8, 40)
-        kind = rng.choices(
-            ["inbox", "action", "result", "note"], weights=[3, 5, 5, 1], k=1
-        )[0]
+        kind = rng.choices(["inbox", "action", "result", "note"], weights=[3, 5, 5, 1], k=1)[0]
         if kind == "inbox":
             text = rng.choice(
                 [
                     f"{rng.choice(['Brin', 'Cato', 'Iris'])} wrote to the shoutboard.",
                     "your last action returned. see below.",
                     "a submission is waiting for jury.",
-                    f"direct message from {rng.choice(['Alma', 'Goro'])}: "
-                    f"{rng.choice(CHATTER)}",
+                    f"direct message from {rng.choice(['Alma', 'Goro'])}: {rng.choice(CHATTER)}",
                 ]
             )
         elif kind == "action":
@@ -189,12 +186,16 @@ def _tasks(harness: DemoHarness, now: float) -> None:
         description="write .panopticon/state.json through a temp file and rename. "
         "one writer, no partial reads on resume.",
         seats=[
-            Seat(role="implementer", holder="Alma", assigned_at=now - 2_100,
-                 finalization=Finalization(
-                     reason="atomic rename is in and covered",
-                     conclusion="state.json is written via .tmp then os.replace; "
-                     "two tests cover a torn write.",
-                 )),
+            Seat(
+                role="implementer",
+                holder="Alma",
+                assigned_at=now - 2_100,
+                finalization=Finalization(
+                    reason="atomic rename is in and covered",
+                    conclusion="state.json is written via .tmp then os.replace; "
+                    "two tests cover a torn write.",
+                ),
+            ),
             Seat(role="reviewer", holder="Brin", assigned_at=now - 2_050),
         ],
         created_by="Alma",
@@ -229,8 +230,12 @@ def _tasks(harness: DemoHarness, now: float) -> None:
         title="pin the tokenizer used for the context estimate",
         description="the estimate drifted between providers.",
         seats=[
-            Seat(role="implementer", holder="Iris", assigned_at=now - 5_400,
-                 finalization=Finalization(reason="done", conclusion="one tokenizer, one number")),
+            Seat(
+                role="implementer",
+                holder="Iris",
+                assigned_at=now - 5_400,
+                finalization=Finalization(reason="done", conclusion="one tokenizer, one number"),
+            ),
         ],
         created_by="Iris",
         created_at=now - 5_600,
@@ -246,11 +251,20 @@ def _tasks(harness: DemoHarness, now: float) -> None:
         title="decide whether we need a message queue at all",
         description="NATS was a suggestion, not a decision.",
         seats=[
-            Seat(role="investigator", holder="Goro", assigned_at=now - 7_000,
-                 finalization=Finalization(reason="not needed",
-                                           conclusion="one process, one loop, asyncio is enough")),
-            Seat(role="second opinion", holder="Fen", assigned_at=now - 6_900,
-                 finalization=Finalization(reason="agreed", conclusion="no broker")),
+            Seat(
+                role="investigator",
+                holder="Goro",
+                assigned_at=now - 7_000,
+                finalization=Finalization(
+                    reason="not needed", conclusion="one process, one loop, asyncio is enough"
+                ),
+            ),
+            Seat(
+                role="second opinion",
+                holder="Fen",
+                assigned_at=now - 6_900,
+                finalization=Finalization(reason="agreed", conclusion="no broker"),
+            ),
         ],
         created_by="Goro",
         created_at=now - 7_200,
@@ -272,24 +286,44 @@ def _tasks(harness: DemoHarness, now: float) -> None:
 
 def _knowledge(harness: DemoHarness, now: float) -> None:
     harness.kb.truths = [
-        Truth(id="k1", title="codex exec needs --json or the tool call is unparseable",
-              body="stdout is prose otherwise. flag confirmed on 0.9.4.",
-              submitted_by="Brin", accepted_at=now - 4_000),
-        Truth(id="k2", title="one tokenizer for every provider's context estimate",
-              body="providers disagree by up to 12%. we count with tiktoken o200k and "
-              "treat the provider figure as advisory.",
-              submitted_by="Iris", accepted_at=now - 3_050),
-        Truth(id="k3", title="a seat held by a dead agent is released after 60 minutes",
-              body="janitor tick, EXPIRE_MINUTES=60. verified against services/janitor.py.",
-              submitted_by="Goro", accepted_at=now - 2_400),
-        Truth(id="k4", title="panopticon needs no message broker",
-              body="single process, single asyncio loop, one queue per agent. NATS was "
-              "considered and dropped.",
-              submitted_by="Goro", accepted_at=now - 5_700),
-        Truth(id="k5", title="transcripts are append-only, one jsonl per agent",
-              body=".panopticon/transcripts/<name>.jsonl. never rewritten, so the prompt "
-              "prefix stays cacheable.",
-              submitted_by="Alma", accepted_at=now - 1_200),
+        Truth(
+            id="k1",
+            title="codex exec needs --json or the tool call is unparseable",
+            body="stdout is prose otherwise. flag confirmed on 0.9.4.",
+            submitted_by="Brin",
+            accepted_at=now - 4_000,
+        ),
+        Truth(
+            id="k2",
+            title="one tokenizer for every provider's context estimate",
+            body="providers disagree by up to 12%. we count with tiktoken o200k and "
+            "treat the provider figure as advisory.",
+            submitted_by="Iris",
+            accepted_at=now - 3_050,
+        ),
+        Truth(
+            id="k3",
+            title="a seat held by a dead agent is released after 60 minutes",
+            body="janitor tick, EXPIRE_MINUTES=60. verified against services/janitor.py.",
+            submitted_by="Goro",
+            accepted_at=now - 2_400,
+        ),
+        Truth(
+            id="k4",
+            title="panopticon needs no message broker",
+            body="single process, single asyncio loop, one queue per agent. NATS was "
+            "considered and dropped.",
+            submitted_by="Goro",
+            accepted_at=now - 5_700,
+        ),
+        Truth(
+            id="k5",
+            title="transcripts are append-only, one jsonl per agent",
+            body=".panopticon/transcripts/<name>.jsonl. never rewritten, so the prompt "
+            "prefix stays cacheable.",
+            submitted_by="Alma",
+            accepted_at=now - 1_200,
+        ),
     ]
     harness.kb.pending = {
         "s1": Submission(
@@ -302,8 +336,12 @@ def _knowledge(harness: DemoHarness, now: float) -> None:
             submitted_at=now - 700,
             jurors=["Dova", "Eik"],
             verdicts=[
-                Verdict(juror="Dova", call=VerdictCall.TRUE,
-                        reasoning="read Bus.run; the sleep is reset, not capped.", at=now - 300),
+                Verdict(
+                    juror="Dova",
+                    call=VerdictCall.TRUE,
+                    reasoning="read Bus.run; the sleep is reset, not capped.",
+                    at=now - 300,
+                ),
             ],
         ),
         "s2": Submission(
@@ -332,8 +370,11 @@ def _shouts(harness: DemoHarness, now: float) -> None:
             )
         )
     harness.bus.shouts.append(
-        Shout(sender="human", body="stop gold-plating the state file. resume is the goal.",
-              at=now - 120)
+        Shout(
+            sender="human",
+            body="stop gold-plating the state file. resume is the goal.",
+            at=now - 120,
+        )
     )
 
 
@@ -342,9 +383,7 @@ async def simulate(app: PanopticonApp, harness: DemoHarness, rng: random.Random)
     while True:
         await asyncio.sleep(rng.uniform(0.15, 0.9))
         live = [
-            a
-            for a in harness.agents.values()
-            if a.alive and a.situation is not Situation.RELEASED
+            a for a in harness.agents.values() if a.alive and a.situation is not Situation.RELEASED
         ]
         if not live:
             continue
@@ -358,9 +397,7 @@ async def simulate(app: PanopticonApp, harness: DemoHarness, rng: random.Random)
         agent.usage.input_tokens += rng.randint(800, 3_000)
         agent.usage.output_tokens += rng.randint(40, 400)
         agent.usage.cost_usd += rng.uniform(0.002, 0.03)
-        agent.entries.append(
-            Entry(kind="action", text=f"{agent.last_action}()", turn=agent.turns)
-        )
+        agent.entries.append(Entry(kind="action", text=f"{agent.last_action}()", turn=agent.turns))
         agent.entries.append(Entry(kind="result", text=rng.choice(RESULTS), turn=agent.turns))
         app.harness_event(Event(kind="action", text=agent.last_action, agent=agent.name))
         if rng.random() < 0.06:

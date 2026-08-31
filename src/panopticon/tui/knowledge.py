@@ -40,9 +40,7 @@ class KnowledgeScreen(LiveScreen):
         pending = sorted(kb.pending.values(), key=lambda s: s.submitted_at)
         bar = Text(f"{len(kb.truths)} accepted", style=GREEN)
         bar.append("   ", style=DIM)
-        bar.append(
-            f"{len(pending)} awaiting jury", style=f"bold {AMBER}" if pending else DIM
-        )
+        bar.append(f"{len(pending)} awaiting jury", style=f"bold {AMBER}" if pending else DIM)
         self.query_one("#detailbar", Static).update(bar)
         self.query_one("#truths", Static).update(truths_block(kb.truths, now))
         self.query_one("#pending", Static).update(pending_block(pending, now))
