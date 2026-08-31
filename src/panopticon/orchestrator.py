@@ -7,6 +7,7 @@ import itertools
 import math
 import time
 from collections.abc import Callable
+from pathlib import Path
 
 from panopticon import prompts, situations, transcript
 from panopticon import store as store_mod
@@ -213,9 +214,12 @@ class Orchestrator:
             self.emit(Event("compaction", "context compacted", agent.name))
 
     def _cwd_for(self, agent: Agent) -> str | None:
-        if agent.task_id and (task := self.board.get(agent.task_id)):
+        # an agent may merge and remove its own worktree; it must not die for that
+        task = self.board.get(agent.task_id) if agent.task_id else None
+        if task and task.worktree and Path(task.worktree).is_dir():
             return task.worktree
-        return None
+        repo = self.worktrees.repo
+        return str(repo) if repo.is_dir() else None
 
     # the harness port
 
@@ -360,7 +364,13 @@ class Orchestrator:
         settled = all(a.situation in (Situation.RELEASED, Situation.RELIEVED) for a in counted)
         if settled:
             voted = sum(1 for a in counted if a.voted_goal_reached)
-            self.stop(f"goal reached ({voted} of {len(counted)} voted)")
+            reason = f"goal reached ({voted} of {len(counted)} voted)"
+            still_closing = [
+                a.name for a in self.agents.values() if a.situation is Situation.CLOSING_TASK
+            ]
+            if still_closing:
+                reason += f"; {', '.join(still_closing)} had not finished integrating"
+            self.stop(reason)
 
     def leave_task(self, name: str, task: Task, why: str, notify: bool = True) -> None:
         was_running = task.running

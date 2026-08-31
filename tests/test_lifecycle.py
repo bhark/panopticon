@@ -8,6 +8,7 @@ through their inboxes, and the run only ends if every hand-off in the design wor
 from __future__ import annotations
 
 import asyncio
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -203,3 +204,21 @@ def test_an_undelivered_inbox_survives_the_snapshot(tmp_path):
         "psst",
         "Ada wrote to the shoutboard",
     ]
+
+
+@pytest.mark.asyncio
+async def test_an_agent_survives_its_own_worktree_being_removed(tmp_path):
+    """A closer that merges and deletes its worktree used to kill the agent: the provider
+    was still spawned with a cwd that no longer existed, four times, and then it died."""
+    orch = build(tmp_path, lambda req: Action("wait", {}))
+    agent = orch.agents["Ada"]
+    task = orch.board.create("Ada", "t", "d", ["solo"])
+    orch.board.assign("Ada", task.id, "solo")
+    await orch.launch_task(task)
+
+    worktree = Path(task.worktree)
+    assert orch._cwd_for(agent) == task.worktree
+
+    shutil.rmtree(worktree)
+    assert orch._cwd_for(agent) == str(orch.worktrees.repo)
+    assert Path(orch._cwd_for(agent)).is_dir()
