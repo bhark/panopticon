@@ -78,8 +78,6 @@ async def relieve_self(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
         return ActionResult.fail(
             "The session has not been ended by the human, so you cannot relieve yourself."
         )
-    agent.situation = Situation.RELIEVED
-    agent.wake_at = None
     harness.broadcast(
         QueueItem("system", f"{agent.name} relieved themselves and has left the Panopticon."),
         exclude=(agent.name,),
@@ -106,7 +104,6 @@ async def mark_integration_done(ctx: ToolCtx, args: dict[str, Any]) -> ActionRes
     summary = args["summary"].strip()
     harness.board.archive_task(task, summary)
     agent.task_id = None
-    agent.situation = Situation.RELIEVED
     harness.broadcast(
         QueueItem("board", f"Task {task.id} ({task.title}) is closed out and archived: {summary}"),
         exclude=(agent.name,),

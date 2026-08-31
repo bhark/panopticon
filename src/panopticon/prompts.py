@@ -124,8 +124,6 @@ def situation_preprompt(agent: Agent, harness: Harness, note: str, dest: Situati
         return _on_jury(agent, harness, note)
     if dest is Situation.CLOSING_TASK:
         return _closing(agent, harness, note)
-    if dest is Situation.RELEASED:
-        return _join(note, "You are released from the work and out of it until you rejoin.")
     return _join(note, "You are back in the main loop with a clean context and nothing assigned.")
 
 

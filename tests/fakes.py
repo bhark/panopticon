@@ -114,6 +114,8 @@ class FakeHarness:
         self.closed.append(task)
 
     def retire(self, agent: Agent) -> None:
+        agent.situation = Situation.RELIEVED
+        agent.wake_at = None
         self.retired.append(agent.name)
 
     def tally_goal(self) -> tuple[int, int]:

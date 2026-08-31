@@ -35,6 +35,10 @@ def _seat_line(seat: Seat) -> str:
     return f"{seat.role}={seat.holder}" + ("(finalized)" if seat.finalization else "")
 
 
+NUDGE_MINUTES = (15, 30, 45)
+EXPIRE_MINUTES = 60
+
+
 class TaskBoard:
     ARCHIVE_SHOWN = 20
 
@@ -69,6 +73,27 @@ class TaskBoard:
             if shared >= 0.85:
                 return task
         return None
+
+    def held_seats(self) -> list[tuple[Task, Seat]]:
+        return [(t, s) for t in self.open_tasks() for s in t.seats if s.holder]
+
+    def waiting_seats(self, now: float) -> list[tuple[Task, Seat, int]]:
+        """Held seats on tasks that have not started, with the minutes each has been held."""
+        return [
+            (task, seat, int((now - (seat.assigned_at or task.created_at)) // 60))
+            for task in self.open_tasks()
+            if task.started_at is None
+            for seat in task.seats
+            if seat.holder
+        ]
+
+    def nudge_due(self, seat: Seat, minutes: int) -> bool:
+        """True once per threshold the seat has crossed, and records that it fired."""
+        due = sum(1 for m in NUDGE_MINUTES if minutes >= m)
+        if due <= seat.nudges_sent:
+            return False
+        seat.nudges_sent = due
+        return True
 
     def render(self) -> str:
         now = time.time()
