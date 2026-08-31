@@ -247,6 +247,10 @@ class Harness(Protocol):
         """All seats filled: cut the worktree and put every holder on the task."""
         ...
 
+    def leave_task(self, name: str, task: Task, why: str, notify: bool = True) -> None:
+        """Release a seat. The only correct way to do it: it also settles everyone left behind."""
+        ...
+
     async def close_task(self, task: Task) -> None:
         """All holders agreed to finalize: release them and spin up the closer."""
         ...

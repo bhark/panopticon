@@ -10,10 +10,10 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import DataTable, Footer, Static
 
-from panopticon.model import Situation
+from panopticon.model import Agent, Situation
 from panopticon.tui.base import LiveScreen, repaint_table
 from panopticon.tui.detail import AgentScreen, TaskScreen
-from panopticon.tui.format import ACCENT, AMBER, DIM, FAINT, GREEN, INK, RED
+from panopticon.tui.format import ACCENT, AMBER, DIM, FAINT, GREEN, INK, RED, since
 from panopticon.tui.render import (
     AGENT_COLUMNS,
     TASK_COLUMNS,
@@ -139,11 +139,6 @@ class OverviewScreen(LiveScreen):
             style=f"bold {AMBER} reverse",
         )
         return Group(body, Text(), alert)
-
-    def _elapsed(self, now: float) -> str:
-        from panopticon.tui.format import since
-
-        return since(self.app.started_at, now)
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         key = event.row_key.value

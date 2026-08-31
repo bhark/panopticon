@@ -56,24 +56,5 @@ class Janitor:
                     )
 
     def _release(self, task: Task, seat: Seat, why: str, notify: bool = True) -> None:
-        holder = seat.holder or ""
-        role = seat.role
-        self.harness.board.unassign(holder, task.id)
-        if notify:
-            self.harness.post(
-                holder,
-                QueueItem(
-                    kind="task",
-                    text=(
-                        f"You have been unassigned from {task.id} ({task.title}): {why}. "
-                        f"The {role} seat is open again if you want it back."
-                    ),
-                ),
-            )
-        self.harness.emit(
-            Event(
-                kind="seat",
-                agent=holder,
-                text=f"released {holder} from the {role} seat on {task.id}: {why}",
-            )
-        )
+        # the harness settles the agent and everyone left on the task; the board alone cannot
+        self.harness.leave_task(seat.holder or "", task, why, notify=notify)

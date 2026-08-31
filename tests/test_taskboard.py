@@ -146,6 +146,15 @@ class FakeHarness:
     def emit(self, event: Event) -> None:
         self.events.append(event)
 
+    def leave_task(self, name: str, task, why: str, notify: bool = True) -> None:
+        self.board.unassign(name, task.id)
+        if agent := self.agents.get(name):
+            agent.task_id = None
+            agent.situation = Situation.IDLE
+        if notify:
+            self.post(name, QueueItem(kind="task", text=f"You have been unassigned from {task.id}: {why}"))
+        self.events.append(Event(kind="seat", text=f"{name} left {task.id}: {why}", agent=name))
+
 
 def waiting_seat(minutes: float) -> tuple[FakeHarness, str, float]:
     board, task_id = board_with_task(["impl", "review"])

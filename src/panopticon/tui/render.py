@@ -91,13 +91,13 @@ def task_row(task: Task, now: float) -> list[Text]:
     ]
 
 
-def shout_block(shouts: list[Shout], limit: int) -> RenderableType:
+def shout_block(shouts: list[Shout], limit: int, human: str = "human") -> RenderableType:
     if not shouts:
         return Text("nothing shouted yet", style=FAINT)
     lines: list[RenderableType] = []
     for shout in shouts[-limit:]:
         head = Text(f"{clock(shout.at)} ", style=FAINT)
-        head.append(shout.sender, style=f"bold {ACCENT if shout.sender == 'human' else BLUE}")
+        head.append(shout.sender, style=f"bold {ACCENT if shout.sender == human else BLUE}")
         lines.append(head)
         lines.append(Text(f"  {oneline(shout.body, 400)}", style=INK))
     return Group(*lines)
@@ -132,6 +132,53 @@ def transcript_block(entries: list[Entry], hidden: int) -> RenderableType:
     if not lines:
         lines.append(Text("no transcript yet", style=FAINT))
     return Group(*lines)
+
+
+def pairs_grid(rows: list[tuple[str, RenderableType]], columns: int = 2) -> Table:
+    """Label/value pairs folded into `columns` side-by-side pairs to stay compact."""
+    grid = Table.grid(padding=(0, 2))
+    for _ in range(columns):
+        grid.add_column(style=DIM, justify="right", width=11)
+        grid.add_column(style=INK, width=30)
+    per_column = -(-len(rows) // columns)
+    for index in range(per_column):
+        cells: list[RenderableType] = []
+        for column in range(columns):
+            slot = column * per_column + index
+            cells.extend(rows[slot] if slot < len(rows) else ("", ""))
+        grid.add_row(*cells)
+    return grid
+
+
+def agent_stats(agent: Agent, window: int, waiting: str, now: float) -> RenderableType:
+    ctx_text, ctx_style = context_cell(agent.usage.context_tokens, window)
+    usage = agent.usage
+    context = Text(ctx_text.strip(), style=ctx_style)
+    if window:
+        context.append(f"  {usage.context_tokens:,} / {window:,}", style=DIM)
+    rows: list[tuple[str, RenderableType]] = [
+        ("provider", Text(agent.provider, style=INK)),
+        ("situation", Text(SITUATION_LABEL[agent.situation], style=SITUATION_STYLE[agent.situation])),
+        ("turns", Text(str(agent.turns), style=INK)),
+        ("lifetime", Text(since(agent.born_at, now), style=INK)),
+        ("context", context),
+        ("transcript", Text(f"{len(agent.entries)} entries", style=DIM)),
+        ("queued", Text(str(len(agent.inbox)), style=AMBER if agent.inbox else DIM)),
+        (
+            "tokens",
+            Text(f"{usage.input_tokens:,} in · {usage.output_tokens:,} out", style=DIM),
+        ),
+        ("cache", Text(f"{usage.cache_read:,} read · {usage.cache_write:,} write", style=DIM)),
+        ("cost", Text(f"${usage.cost_usd:.4f}", style=DIM)),
+        (
+            "failures",
+            Text(str(agent.consecutive_failures), style=RED if agent.consecutive_failures else DIM),
+        ),
+        ("last action", Text(oneline(agent.last_action or "-", 30), style=INK)),
+    ]
+    waiting_line = Text("waiting on  ", style=DIM)
+    waiting_line.append(clip(waiting, 120), style=BLUE)
+    return Group(pairs_grid(rows), Text(), waiting_line)
 
 
 def seats_block(task: Task, now: float) -> RenderableType:

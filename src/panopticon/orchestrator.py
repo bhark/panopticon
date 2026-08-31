@@ -318,17 +318,59 @@ class Orchestrator:
             voted = sum(1 for a in counted if a.voted_goal_reached)
             self.stop(f"goal reached ({voted} of {len(counted)} voted)")
 
+    def leave_task(self, name: str, task: Task, why: str, notify: bool = True) -> None:
+        was_running = task.running
+        seat = task.seat_of(name)
+        role = seat.role if seat else "?"
+        self.board.unassign(name, task.id)
+
+        agent = self.agents.get(name)
+        if agent is not None:
+            agent.task_id = None
+            if agent.situation in (Situation.ON_TASK, Situation.WAITING_FOR_SEATS):
+                self.enter(
+                    agent,
+                    Situation.IDLE,
+                    prompts.situation_preprompt(
+                        agent, self, f"You left {task.id} ({task.title}): {why}."
+                    ),
+                )
+            if notify:
+                self.post(
+                    name,
+                    QueueItem(
+                        "task",
+                        f"You have been unassigned from {task.id} ({task.title}): {why}. "
+                        f"The {role} seat is open again if you want it back.",
+                    ),
+                )
+
+        for other in task.holders:
+            peer = self.agents.get(other)
+            if peer is None:
+                continue
+            # a task that loses a seat stops; whoever is left must stop working on it too
+            if was_running and peer.situation is Situation.ON_TASK:
+                peer.situation = Situation.WAITING_FOR_SEATS
+            self.post(
+                other,
+                QueueItem(
+                    "task",
+                    f"{name} left the {role} seat on {task.id}: {why}. "
+                    + (
+                        "The task has stopped until that seat is filled again. Your work is still "
+                        f"in the worktree at {task.worktree}."
+                        if was_running
+                        else "It is still waiting for seats."
+                    ),
+                ),
+            )
+        self.emit(Event("seat", f"{name} left the {role} seat on {task.id}: {why}", name))
+
     def _release_seats_of(self, agent: Agent) -> None:
         task = self.board.task_of(agent.name)
-        if task is None:
-            return
-        self.board.unassign(agent.name, task.id)
-        agent.task_id = None
-        for name in task.holders:
-            self.post(
-                name,
-                QueueItem("task", f"{agent.name} left {task.id}; that seat is open again."),
-            )
+        if task is not None:
+            self.leave_task(agent.name, task, "the agent is gone", notify=False)
 
     # background
 
