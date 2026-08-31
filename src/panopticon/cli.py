@@ -133,14 +133,9 @@ def rebuild(store: Store, cfg: Config, providers: dict[str, Provider], repo: Pat
         started_at=state["started_at"],
     )
     orch.force_ending = state.get("force_ending", False)
-    for raw in state.get("tasks", []):
-        task = store_mod.restore_task(raw)
-        orch.board.tasks[task.id] = task
-    orch.kb.truths = [store_mod.restore_truth(t) for t in state.get("truths", [])]
-    for raw in state.get("pending_submissions", []):
-        submission = store_mod.restore_submission(raw)
-        orch.kb.pending[submission.id] = submission
-    orch.bus.shouts = [store_mod.restore_shout(s) for s in state.get("shouts", [])]
+    orch.board.restore(state.get("board", []))
+    orch.kb.restore(state.get("knowledge", {}))
+    orch.bus.restore(state.get("bus", []))
     # whoever was mid-turn when we paused simply takes that turn again
     for agent in agents:
         if agent.situation is not Situation.DEAD:

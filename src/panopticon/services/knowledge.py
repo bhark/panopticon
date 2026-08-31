@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from panopticon import store
 from panopticon.model import Submission, Truth, Verdict, VerdictCall
 
 
@@ -12,7 +13,6 @@ class Knowledge:
         self.truths: list[Truth] = []
         self.pending: dict[str, Submission] = {}
         self._submitted = 0
-        self._accepted = 0
 
     def render(self) -> str:
         if not self.truths:
@@ -93,10 +93,9 @@ class Knowledge:
 
         if sum(1 for v in sub.verdicts if v.call is VerdictCall.TRUE) >= self.NEEDED_TRUE:
             self._drop(sub)
-            self._accepted += 1
             self.truths.append(
                 Truth(
-                    id=f"k{self._accepted}",
+                    id=f"k{len(self.truths) + 1}",
                     title=sub.title,
                     body=sub.body,
                     submitted_by=sub.submitted_by,
@@ -105,6 +104,21 @@ class Knowledge:
             return sub, "accepted"
 
         return sub, "pending"
+
+    # persistence
+
+    def snapshot(self) -> dict:
+        return {
+            "truths": [store.dump(t) for t in self.truths],
+            "pending": [store.dump(s) for s in self.pending.values()],
+            # ids must not restart after a resume, or a new submission reuses a dropped id
+            "submitted": self._submitted,
+        }
+
+    def restore(self, raw: dict) -> None:
+        self.truths = [store.load(Truth, t) for t in raw.get("truths", [])]
+        self.pending = {s.id: s for s in map(store.restore_submission, raw.get("pending", []))}
+        self._submitted = raw.get("submitted", len(self.pending))
 
     # internals
 

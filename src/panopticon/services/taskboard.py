@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import time
 
+from panopticon import store
 from panopticon.model import Finalization, Seat, Task
 
 
@@ -172,6 +173,14 @@ class TaskBoard:
     def archive_task(self, task: Task, outcome: str) -> None:
         task.archived_at = time.time()
         task.outcome = outcome
+
+    # persistence
+
+    def snapshot(self) -> list[dict]:
+        return [store.dump(t) for t in self.tasks.values()]
+
+    def restore(self, raw: list[dict]) -> None:
+        self.tasks = {t.id: t for t in map(store.restore_task, raw)}
 
     # internals
 

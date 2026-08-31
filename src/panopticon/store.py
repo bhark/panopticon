@@ -16,11 +16,9 @@ from panopticon.model import (
     Finalization,
     QueueItem,
     Seat,
-    Shout,
     Situation,
     Submission,
     Task,
-    Truth,
     Usage,
     Verdict,
     VerdictCall,
@@ -32,7 +30,7 @@ STATE_DIRNAME = ".panopticon"
 RUNTIME_FIELDS = ("inbox", "wakeup")
 
 
-def _dump(obj: Any) -> Any:
+def dump(obj: Any) -> Any:
     return asdict(obj) if is_dataclass(obj) else obj
 
 
@@ -44,13 +42,13 @@ def _dump_agent(agent: Agent) -> dict[str, Any]:
         if f.name in RUNTIME_FIELDS:
             continue
         out[f.name] = (
-            _dump(getattr(agent, f.name)) if f.name in ("usage",) else getattr(agent, f.name)
+            dump(getattr(agent, f.name)) if f.name in ("usage",) else getattr(agent, f.name)
         )
-    out["entries"] = [_dump(e) for e in agent.entries]
+    out["entries"] = [dump(e) for e in agent.entries]
     return out
 
 
-def _load[T](cls: type[T], data: dict[str, Any]) -> T:
+def load[T](cls: type[T], data: dict[str, Any]) -> T:
     """Construct a dataclass from a dict, ignoring fields a newer version dropped."""
     known = {f.name for f in fields(cls)}
     return cls(**{k: v for k, v in data.items() if k in known})
@@ -75,11 +73,11 @@ class Store:
 
     def append_event(self, event: Event) -> None:
         with self.events_file.open("a") as fh:
-            fh.write(json.dumps(_dump(event)) + "\n")
+            fh.write(json.dumps(dump(event)) + "\n")
 
     def append_entry(self, agent: str, entry: Entry) -> None:
         with (self.transcripts / f"{agent}.jsonl").open("a") as fh:
-            fh.write(json.dumps(_dump(entry)) + "\n")
+            fh.write(json.dumps(dump(entry)) + "\n")
 
     def save(self, state: dict[str, Any]) -> None:
         """Atomic: a crash mid-write must not leave an unreadable snapshot."""
@@ -93,27 +91,26 @@ class Store:
 
 def snapshot(harness: Any) -> dict[str, Any]:
     return {
-        "version": 1,
+        "version": 2,
         "goal": harness.goal,
         "started_at": harness.started_at,
         "force_ending": harness.force_ending,
         "saved_at": time.time(),
         "agents": [
-            _dump_agent(a) | {"pending": [_dump(i) for i in a.inbox]}
+            _dump_agent(a) | {"pending": [dump(i) for i in a.inbox]}
             for a in harness.agents.values()
         ],
-        "tasks": [_dump(t) for t in harness.board.tasks.values()],
-        "truths": [_dump(t) for t in harness.kb.truths],
-        "pending_submissions": [_dump(s) for s in harness.kb.pending.values()],
-        "shouts": [_dump(s) for s in harness.bus.shouts],
+        "board": harness.board.snapshot(),
+        "knowledge": harness.kb.snapshot(),
+        "bus": harness.bus.snapshot(),
     }
 
 
 def restore_agent(data: dict[str, Any]) -> Agent:
-    entries = [_load(Entry, e) for e in data.pop("entries", [])]
-    usage = _load(Usage, data.pop("usage", {}) or {})
-    pending = [_load(QueueItem, i) for i in data.pop("pending", [])]
-    agent = _load(Agent, data)
+    entries = [load(Entry, e) for e in data.pop("entries", [])]
+    usage = load(Usage, data.pop("usage", {}) or {})
+    pending = [load(QueueItem, i) for i in data.pop("pending", [])]
+    agent = load(Agent, data)
     agent.entries = entries
     agent.usage = usage
     agent.situation = Situation(data["situation"])
@@ -125,10 +122,10 @@ def restore_task(data: dict[str, Any]) -> Task:
     seats = []
     for raw in data.pop("seats", []):
         fin = raw.pop("finalization", None)
-        seat = _load(Seat, raw)
-        seat.finalization = _load(Finalization, fin) if fin else None
+        seat = load(Seat, raw)
+        seat.finalization = load(Finalization, fin) if fin else None
         seats.append(seat)
-    task = _load(Task, {**data, "seats": []})  # seats is required positionally
+    task = load(Task, {**data, "seats": []})  # seats is required positionally
     task.seats = seats
     return task
 
@@ -136,17 +133,10 @@ def restore_task(data: dict[str, Any]) -> Task:
 def restore_submission(data: dict[str, Any]) -> Submission:
     verdicts = []
     for raw in data.pop("verdicts", []):
-        verdict = _load(Verdict, raw)
+        verdict = load(Verdict, raw)
         verdict.call = VerdictCall(raw["call"])
         verdicts.append(verdict)
-    submission = _load(Submission, data)
+    submission = load(Submission, data)
     submission.verdicts = verdicts
     return submission
 
-
-def restore_truth(data: dict[str, Any]) -> Truth:
-    return _load(Truth, data)
-
-
-def restore_shout(data: dict[str, Any]) -> Shout:
-    return _load(Shout, data)

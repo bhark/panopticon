@@ -6,6 +6,7 @@ import asyncio
 import time
 from collections.abc import Callable
 
+from panopticon import store
 from panopticon.model import DirectMessage, Shout
 
 
@@ -53,6 +54,12 @@ class Bus:
         if not lines:
             return "shoutboard: empty"
         return "shoutboard (newest first, last hour)\n" + "\n".join(lines)
+
+    def snapshot(self) -> list[dict]:
+        return [store.dump(s) for s in self.shouts]
+
+    def restore(self, raw: list[dict]) -> None:
+        self.shouts = [store.load(Shout, s) for s in raw]
 
     async def run(self) -> None:
         """The debounce timer. Cancelled on shutdown."""
