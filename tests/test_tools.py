@@ -310,7 +310,7 @@ async def test_you_cannot_judge_your_own_submission_but_can_judge_another(tmp_pa
         Action(JOIN_JURY, {"submission_id": submission_id}),
         [JOIN_JURY],
     )
-    assert not mine.ok and "own submission" in mine.text
+    assert not mine.ok and "your own statement" in mine.text
 
     h.agents["Bo"].entries.append(Entry("note", "before"))
     assert (await run(h, "Bo", JOIN_JURY, submission_id=submission_id)).ok
@@ -336,7 +336,6 @@ async def test_a_restate_verdict_without_a_restatement_is_refused(tmp_path):
 async def test_a_verdict_ends_jury_duty_and_tells_the_submitter(tmp_path):
     h = harness(tmp_path)
     submission = h.kb.submit("Ada", "claim", "proof")
-    h.kb.outcome = "rejected"
     await run(h, "Bo", JOIN_JURY, submission_id=submission.id)
 
     result = await run(h, "Bo", SUBMIT_VERDICT, verdict="false", reasoning="the file is gone")
@@ -349,9 +348,9 @@ async def test_a_verdict_ends_jury_duty_and_tells_the_submitter(tmp_path):
 async def test_an_accepted_verdict_is_told_to_everyone(tmp_path):
     h = harness(tmp_path)
     submission = h.kb.submit("Ada", "the suite needs TZ=UTC", "proof")
-    h.kb.outcome = "accepted"
-    await run(h, "Bo", JOIN_JURY, submission_id=submission.id)
-    await run(h, "Bo", SUBMIT_VERDICT, verdict="true", reasoning="checked")
+    for juror in ("Bo", "Cy"):  # a truth needs two 'true' verdicts to land
+        await run(h, juror, JOIN_JURY, submission_id=submission.id)
+        await run(h, juror, SUBMIT_VERDICT, verdict="true", reasoning="checked")
 
     for name in ("Ada", "Bo", "Cy"):
         assert any("entered the knowledge base" in m for m in h.messages_for(name)), name

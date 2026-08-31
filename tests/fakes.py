@@ -2,147 +2,19 @@
 
 from __future__ import annotations
 
-import itertools
 from pathlib import Path
 
 from panopticon.model import (
     Agent,
     Event,
-    Finalization,
     QueueItem,
-    Seat,
     Situation,
-    Submission,
     Task,
-    Verdict,
-    VerdictCall,
 )
 from panopticon.prompts import situation_preprompt
-
-
-class FakeBoard:
-    def __init__(self) -> None:
-        self.tasks: dict[str, Task] = {}
-        self._ids = itertools.count(1)
-
-    def duplicate_of(self, title: str) -> Task | None:
-        return next((t for t in self.tasks.values() if t.title == title), None)
-
-    def create(self, creator: str, title: str, description: str, roles: list[str]) -> Task:
-        task = Task(
-            id=f"T{next(self._ids)}",
-            title=title,
-            description=description,
-            seats=[Seat(role=r) for r in roles],
-            created_by=creator,
-        )
-        self.tasks[task.id] = task
-        return task
-
-    def get(self, task_id: str) -> Task | None:
-        return self.tasks.get(task_id)
-
-    def assign(self, agent: str, task_id: str, role: str) -> tuple[Task, bool]:
-        task = self.tasks.get(task_id)
-        if task is None:
-            raise ValueError(f"There is no task {task_id}.")
-        seat = next((s for s in task.seats if s.role == role and not s.holder), None)
-        if seat is None:
-            raise ValueError(f"No open {role} seat on {task_id}.")
-        seat.holder = agent
-        return task, task.ready
-
-    def unassign(self, agent: str, task_id: str) -> Task:
-        task = self.tasks.get(task_id)
-        seat = task.seat_of(agent) if task else None
-        if task is None or seat is None:
-            raise ValueError(f"You hold no seat on {task_id}.")
-        seat.holder, seat.finalization = None, None
-        return task
-
-    def finalize(self, agent: str, task_id: str, reason: str, conclusion: str) -> tuple[Task, bool]:
-        task = self.tasks.get(task_id)
-        seat = task.seat_of(agent) if task else None
-        if task is None or seat is None:
-            raise ValueError(f"You hold no seat on {task_id}.")
-        seat.finalization = Finalization(reason, conclusion)
-        return task, all(s.finalization for s in task.seats)
-
-    def cancel_finalize(self, agent: str, task_id: str) -> Task:
-        task = self.tasks.get(task_id)
-        seat = task.seat_of(agent) if task else None
-        if task is None or seat is None:
-            raise ValueError(f"You hold no seat on {task_id}.")
-        seat.finalization = None
-        return task
-
-    def start(self, task: Task, worktree: str) -> None:
-        task.worktree, task.started_at = worktree, 1.0
-
-    def archive_task(self, task: Task, outcome: str) -> None:
-        task.archived_at, task.outcome = 2.0, outcome
-
-    def render(self) -> str:
-        return "BOARD " + ", ".join(self.tasks)
-
-
-class FakeKnowledge:
-    def __init__(self) -> None:
-        self.truths: list[object] = []
-        self.pending: dict[str, Submission] = {}
-        self.outcome = "pending"
-        self._ids = itertools.count(1)
-
-    def render(self) -> str:
-        return "KB"
-
-    def render_pending(self) -> str:
-        return "PENDING " + ", ".join(self.pending)
-
-    def submit(self, agent: str, title: str, body: str) -> Submission:
-        sub = Submission(id=f"S{next(self._ids)}", title=title, body=body, submitted_by=agent)
-        self.pending[sub.id] = sub
-        return sub
-
-    def join(self, agent: str, submission_id: str) -> Submission:
-        sub = self.pending.get(submission_id)
-        if sub is None:
-            raise ValueError(f"There is no submission {submission_id}.")
-        if sub.submitted_by == agent:
-            raise ValueError("You cannot judge your own submission.")
-        if agent in sub.jurors:
-            raise ValueError("You are already on that jury.")
-        sub.jurors.append(agent)
-        return sub
-
-    def leave(self, agent: str, submission_id: str) -> Submission:
-        sub = self.pending[submission_id]
-        sub.jurors.remove(agent)
-        return sub
-
-    def verdict(
-        self,
-        agent: str,
-        submission_id: str,
-        call: VerdictCall,
-        reasoning: str,
-        restated_title: str = "",
-        restated_body: str = "",
-    ) -> tuple[Submission, str]:
-        sub = self.pending[submission_id]
-        sub.verdicts.append(Verdict(agent, call, reasoning))
-        return sub, self.outcome
-
-
-class FakeBus:
-    def __init__(self) -> None:
-        self.shouts: list[tuple[str, str]] = []
-
-    def shout(self, sender: str, body: str) -> None:
-        self.shouts.append((sender, body))
-
-    def render_shoutboard(self) -> str:
-        return "SHOUTBOARD " + " | ".join(f"{s}: {b}" for s, b in self.shouts)
+from panopticon.services.bus import Bus
+from panopticon.services.knowledge import Knowledge
+from panopticon.services.taskboard import TaskBoard
 
 
 class FakeWorktrees:
@@ -167,9 +39,9 @@ class FakeHarness:
         repo.mkdir(parents=True, exist_ok=True)
         self.goal = "Make the flaky integration suite pass."
         self.agents = {n: Agent(name=n, provider="fake") for n in names}
-        self.board = FakeBoard()
-        self.bus = FakeBus()
-        self.kb = FakeKnowledge()
+        self.board = TaskBoard()
+        self.kb = Knowledge()
+        self.bus = Bus(lambda senders: None)
         self.worktrees = FakeWorktrees(repo)
         self.force_ending = False
         self.posted: list[tuple[str, QueueItem]] = []
@@ -221,14 +93,12 @@ class FakeHarness:
             agent.situation = Situation.IDLE
 
     def leave_task(self, name: str, task: Task, why: str, notify: bool = True) -> None:
-        seat = task.seat_of(name)
-        assert seat is not None
-        seat.holder, seat.finalization = None, None
+        was_running = task.running
+        self.board.unassign(name, task.id)
         leaver = self.agents[name]
         leaver.task_id = None
         self.enter(leaver, Situation.IDLE, f"You left task {task.id}.")
-        if task.started_at is not None:
-            task.started_at = None
+        if was_running:
             for other in task.holders:
                 self.agents[other].situation = Situation.WAITING_FOR_SEATS
         if notify:
