@@ -71,27 +71,49 @@ def strict_action_schema(tools: list[ToolSpec]) -> dict[str, Any]:
     }
 
 
+def _last_object(blob: str) -> str | None:
+    """Last balanced top-level {...}, counting braces outside string literals only.
+
+    Nested objects are skipped rather than scanned as candidates of their own, and a brace
+    inside a string stays inside it: agents pass shell commands through `args`.
+    """
+    found, pos = None, 0
+    while (start := blob.find("{", pos)) != -1:
+        depth, in_string, escaped, end = 0, False, False, -1
+        for j in range(start, len(blob)):
+            char = blob[j]
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == '"':
+                    in_string = False
+            elif char == '"':
+                in_string = True
+            elif char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    end = j + 1
+                    break
+        if end == -1:
+            return found
+        found, pos = blob[start:end], end
+    return found
+
+
 def parse_action(text: str, tools: list[ToolSpec]) -> tuple[Action | None, str | None]:
     """Pull one action out of model output. Returns (action, error)."""
     import json
-    import re
 
     blob = text.strip()
     if not blob:
         return None, "empty response"
     if not blob.startswith("{"):
-        # fenced or prose-wrapped: take the last balanced object in the text
-        match = None
-        for m in re.finditer(r"\{", blob):
-            depth, i = 0, m.start()
-            for j in range(i, len(blob)):
-                if blob[j] == "{":
-                    depth += 1
-                elif blob[j] == "}":
-                    depth -= 1
-                    if depth == 0:
-                        match = blob[i : j + 1]
-                        break
+        # fenced or prose-wrapped: take the last balanced top-level object in the text
+        match = _last_object(blob)
         if match is None:
             return None, "no JSON object in response"
         blob = match

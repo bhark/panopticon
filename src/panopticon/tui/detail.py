@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import time
+from typing import ClassVar
 
 from rich.console import Group
 from rich.text import Text
 from textual.app import ComposeResult
-from textual.binding import Binding
+from textual.binding import Binding, BindingType
 from textual.containers import VerticalScroll
 from textual.widgets import Footer, Static
 
@@ -34,7 +35,7 @@ BACK = Binding("escape", "app.pop_screen", "back")
 
 
 class AgentScreen(LiveScreen):
-    BINDINGS = [BACK]
+    BINDINGS: ClassVar[list[BindingType]] = [BACK]
 
     def __init__(self, name: str) -> None:
         super().__init__()
@@ -88,7 +89,7 @@ class AgentScreen(LiveScreen):
 
 
 class TaskScreen(LiveScreen):
-    BINDINGS = [BACK]
+    BINDINGS: ClassVar[list[BindingType]] = [BACK]
 
     def __init__(self, task_id: str) -> None:
         super().__init__()

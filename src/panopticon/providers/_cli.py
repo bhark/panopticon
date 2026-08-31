@@ -25,7 +25,9 @@ class Completed:
     error: str | None = None
 
 
-async def run(argv: list[str], *, cwd: str | None = None, timeout: float = DEFAULT_TIMEOUT) -> Completed:
+async def run(
+    argv: list[str], *, cwd: str | None = None, timeout: float = DEFAULT_TIMEOUT
+) -> Completed:
     """stdin is closed: codex appends a piped stdin to the prompt as a <stdin> block."""
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -49,13 +51,15 @@ async def run(argv: list[str], *, cwd: str | None = None, timeout: float = DEFAU
         _kill_group(proc)
         raise
 
-    return Completed(out.decode(errors="replace"), err.decode(errors="replace"), proc.returncode or 0)
+    return Completed(
+        out.decode(errors="replace"), err.decode(errors="replace"), proc.returncode or 0
+    )
 
 
 def _kill_group(proc: asyncio.subprocess.Process) -> None:
     try:
         os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-    except (ProcessLookupError, PermissionError):
+    except ProcessLookupError, PermissionError:
         proc.kill()
 
 

@@ -87,7 +87,9 @@ def parse_output(stdout: str, tools: list) -> TurnResponse | None:
     usage = _usage(event)
     if event.get("is_error"):
         reason = event.get("terminal_reason") or event.get("subtype") or "error"
-        return TurnResponse(error=f"{reason}: {event.get('result')}", usage=usage, raw=str(event.get("result", "")))
+        return TurnResponse(
+            error=f"{reason}: {event.get('result')}", usage=usage, raw=str(event.get("result", ""))
+        )
     # structured_output is the same object as `result`, already decoded
     structured = event.get("structured_output")
     raw = json.dumps(structured) if isinstance(structured, dict) else str(event.get("result") or "")

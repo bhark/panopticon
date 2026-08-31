@@ -75,7 +75,7 @@ async def bash(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
         return ActionResult.fail(f"timeout must be between 1 and {MAX_TIMEOUT} seconds.")
 
     root = _root(ctx)
-    # a guardrail against accident, not a sandbox: the shell can still reach outside by absolute path
+    # a guardrail against accident, not a sandbox: the shell still reaches out by absolute path
     proc = await asyncio.create_subprocess_shell(
         command,
         stdout=asyncio.subprocess.PIPE,
@@ -95,9 +95,7 @@ async def bash(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
         )
 
     body = _truncate(out.decode(errors="replace")).rstrip()
-    return ActionResult(
-        proc.returncode == 0, f"exit {proc.returncode}\n{body or '(no output)'}"
-    )
+    return ActionResult(proc.returncode == 0, f"exit {proc.returncode}\n{body or '(no output)'}")
 
 
 @tool(
@@ -164,9 +162,7 @@ async def write_file(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     except OSError as exc:
         return ActionResult.fail(f"Could not write {_shown(root, target)}: {exc}")
     what = "Overwrote" if existed else "Created"
-    return ActionResult(
-        True, f"{what} {_shown(root, target)}, {len(content.splitlines())} lines."
-    )
+    return ActionResult(True, f"{what} {_shown(root, target)}, {len(content.splitlines())} lines.")
 
 
 @tool(

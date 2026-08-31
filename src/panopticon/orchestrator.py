@@ -148,7 +148,7 @@ class Orchestrator:
                 response = await self.providers[agent.provider].act(request)
             agent.turns += 1
 
-            transcript.note_usage(agent, response.usage)
+            transcript.record_usage(agent, response.usage)
             if response.action is None:
                 if self._recover(agent, response.error or "no action"):
                     continue
@@ -200,7 +200,7 @@ class Orchestrator:
 
     async def _maybe_compact(self, agent: Agent) -> None:
         provider = self.providers[agent.provider]
-        if transcript.estimate_tokens(agent) < provider.context_window - transcript.RESERVE_TOKENS:
+        if not transcript.needs_compaction(agent, provider):
             return
         system = prompts.build_system_prompt(agent, self, situations.tools_for(agent, self))
         if await transcript.compact(agent, provider, system):

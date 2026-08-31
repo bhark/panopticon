@@ -79,8 +79,7 @@ async def assign_self(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     harness, agent = ctx.harness, ctx.agent
     if agent.task_id:
         return ActionResult.fail(
-            f"You already hold a seat on task {agent.task_id}. Leave it first with "
-            f"{UNASSIGN_SELF}."
+            f"You already hold a seat on task {agent.task_id}. Leave it first with {UNASSIGN_SELF}."
         )
     role = args["role"].strip()
     try:
@@ -113,42 +112,20 @@ async def assign_self(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
 
 @tool(
     UNASSIGN_SELF,
-    "Give up your seat. If the task was still waiting for seats it goes back to open. If it "
-    "was running you leave it and the others keep it, so say why on the shoutboard or to them "
-    "directly first.",
+    "Give up your seat. If the task was still waiting for seats it goes back to open. If it was "
+    "already running it stops for everyone on it until your seat is filled again, so tell them "
+    "why before you do this.",
     task_id=ArgSpec("string", "The task you are leaving."),
 )
 async def unassign_self(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     harness, agent = ctx.harness, ctx.agent
     task_id = args["task_id"].strip()
-    known = harness.board.get(task_id)
-    seat = known.seat_of(agent.name) if known else None
-    role = seat.role if seat else "?"
-    try:
-        task = harness.board.unassign(agent.name, task_id)
-    except ValueError as exc:
-        return ActionResult.fail(str(exc))
-
-    was_on_task = agent.situation is Situation.ON_TASK
-    agent.task_id = None
-    for name in task.holders:
-        harness.post(
-            name,
-            QueueItem("task", f"{agent.name} left the {role} seat on task {task.id}."),
-        )
-    if was_on_task:
-        harness.enter(
-            agent,
-            Situation.IDLE,
-            situation_preprompt(
-                agent,
-                harness,
-                f"You left task {task.id} ({task.title}) before it was finished.",
-                Situation.IDLE,
-            ),
-        )
-    else:
-        agent.situation = Situation.IDLE
+    task = harness.board.get(task_id)
+    if task is None:
+        return ActionResult.fail(f"There is no task {task_id}.")
+    if task.seat_of(agent.name) is None:
+        return ActionResult.fail(f"You hold no seat on task {task_id}.")
+    harness.leave_task(agent.name, task, "unassigned themselves")
     return ActionResult(True, f"You are off task {task.id}.")
 
 

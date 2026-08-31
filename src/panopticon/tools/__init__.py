@@ -9,7 +9,7 @@ from panopticon.model import Action, ActionResult, ArgSpec, Handler, ToolCtx, To
 REGISTRY: dict[str, ToolSpec] = {}
 
 
-def tool(name: str, description: str, **args: ArgSpec):
+def tool(name: str, description: str, /, **args: ArgSpec):
     def wrap(handler: Handler) -> Handler:
         REGISTRY[name] = ToolSpec(name=name, description=description, args=args, handler=handler)
         return handler
@@ -55,13 +55,19 @@ async def dispatch(ctx: ToolCtx, action: Action, allowed: list[str]) -> ActionRe
         )
     args = dict(action.args)
     if problems := validate(spec, args):
-        return ActionResult.fail(
-            f"{action.tool}: {'; '.join(problems)}. You sent: {action.args!r}"
-        )
+        return ActionResult.fail(f"{action.tool}: {'; '.join(problems)}. You sent: {action.args!r}")
     try:
         return await spec.handler(ctx, args)
     except Exception as exc:  # a tool bug must reach the agent, not kill its loop
         return ActionResult.fail(f"{action.tool} failed: {type(exc).__name__}: {exc}")
 
 
-from panopticon.tools import board, comms, jury, knowledge, lifecycle, wait, workspace  # noqa: E402,F401
+from panopticon.tools import (  # noqa: E402,F401
+    board,
+    comms,
+    jury,
+    knowledge,
+    lifecycle,
+    wait,
+    workspace,
+)

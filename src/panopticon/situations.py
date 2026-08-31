@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from panopticon.model import Agent, Harness, Situation, ToolSpec
-from panopticon.tools import specs
 
 WAIT = "wait"
 VIEW_BOARD = "view_task_board"
@@ -34,13 +33,35 @@ _COMMS = [SEND_DM, SHOUT, VIEW_SHOUTBOARD]
 _WORKSPACE = [BASH, READ_FILE, WRITE_FILE, EDIT_FILE]
 
 _BASE: dict[Situation, list[str]] = {
-    Situation.IDLE: [WAIT, VIEW_BOARD, CREATE_TASK, ASSIGN_SELF, *_COMMS, VIEW_KB,
-                     VOTE_GOAL_REACHED],
+    Situation.IDLE: [
+        WAIT,
+        VIEW_BOARD,
+        CREATE_TASK,
+        ASSIGN_SELF,
+        *_COMMS,
+        VIEW_KB,
+        VOTE_GOAL_REACHED,
+    ],
     Situation.WAITING_FOR_SEATS: [WAIT, VIEW_BOARD, UNASSIGN_SELF, *_COMMS, VIEW_KB],
-    Situation.ON_TASK: [WAIT, VIEW_BOARD, UNASSIGN_SELF, FINALIZE_TASK, *_COMMS, VIEW_KB,
-                        *_WORKSPACE],
-    Situation.JURY: [WAIT, *_COMMS, VIEW_KB, LIST_JURY, SUBMIT_VERDICT, CANCEL_JURY,
-                     BASH, READ_FILE],
+    Situation.ON_TASK: [
+        WAIT,
+        VIEW_BOARD,
+        UNASSIGN_SELF,
+        FINALIZE_TASK,
+        *_COMMS,
+        VIEW_KB,
+        *_WORKSPACE,
+    ],
+    Situation.JURY: [
+        WAIT,
+        *_COMMS,
+        VIEW_KB,
+        LIST_JURY,
+        SUBMIT_VERDICT,
+        CANCEL_JURY,
+        BASH,
+        READ_FILE,
+    ],
     Situation.CLOSING_TASK: [WAIT, VIEW_BOARD, *_COMMS, VIEW_KB, *_WORKSPACE, MARK_DONE],
     Situation.RELEASED: [WAIT, *_COMMS, REJOIN],
     Situation.RELIEVED: [],
@@ -50,8 +71,12 @@ _BASE: dict[Situation, list[str]] = {
 # joining a jury means leaving what you are doing, so it is offered only from idle
 _JURY_JOINABLE = (Situation.IDLE,)
 # a truth needs the KB read first, so an agent cannot duplicate or contradict one
-_TRUTH_SUBMITTABLE = (Situation.IDLE, Situation.WAITING_FOR_SEATS, Situation.ON_TASK,
-                      Situation.CLOSING_TASK)
+_TRUTH_SUBMITTABLE = (
+    Situation.IDLE,
+    Situation.WAITING_FOR_SEATS,
+    Situation.ON_TASK,
+    Situation.CLOSING_TASK,
+)
 
 
 def tool_names(agent: Agent, harness: Harness) -> list[str]:
@@ -80,4 +105,6 @@ def tool_names(agent: Agent, harness: Harness) -> list[str]:
 
 
 def tools_for(agent: Agent, harness: Harness) -> list[ToolSpec]:
+    from panopticon.tools import specs  # deferred: the tool modules import the names above
+
     return specs(tool_names(agent, harness))

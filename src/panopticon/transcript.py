@@ -36,6 +36,7 @@ _failures: dict[str, int] = {}
 
 # append
 
+
 def append_inbox(agent: Agent, items: list[QueueItem]) -> None:
     """Fold consumed queue items in at the point they were consumed."""
     for item in items:
@@ -64,6 +65,7 @@ def reset(agent: Agent, preprompt: str) -> None:
 
 # render
 
+
 def render(agent: Agent) -> str:
     lines = _lines(agent.entries)
     lines.append("")
@@ -83,7 +85,8 @@ def _tag(entry: Entry) -> str:
 
 # tokens
 
-def record_usage(agent: Agent, usage: Usage) -> None:
+
+def note_usage(agent: Agent, usage: Usage) -> None:
     """Fold one turn's usage in. Call before appending that turn's action entry.
 
     `measured_entries` pins the reported context figure to the transcript length it was

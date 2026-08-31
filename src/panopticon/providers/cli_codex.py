@@ -81,7 +81,9 @@ def parse_output(stdout: str, tools: list, *, code: int = 0, stderr: str = "") -
         return TurnResponse(error=error, usage=usage, raw=error)
     if not message:
         return TurnResponse(
-            error=f"codex exited {code} with no agent message", usage=usage, raw=_cli.tail(stderr or stdout)
+            error=f"codex exited {code} with no agent message",
+            usage=usage,
+            raw=_cli.tail(stderr or stdout),
         )
     action, parse_error = parse_action(message, tools)
     return TurnResponse(action=action, usage=usage, error=parse_error, raw=message)

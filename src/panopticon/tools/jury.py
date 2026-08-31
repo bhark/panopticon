@@ -106,8 +106,7 @@ async def submit_verdict(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
         situation_preprompt(
             agent,
             harness,
-            f"You judged submission {judged} '{call.value}' and your jury duty ended "
-            f"({outcome}).",
+            f"You judged submission {judged} '{call.value}' and your jury duty ended ({outcome}).",
             Situation.IDLE,
         ),
     )

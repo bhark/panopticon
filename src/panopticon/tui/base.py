@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
 from rich.text import Text
@@ -32,10 +33,8 @@ def repaint_table(table: DataTable, rows: list[tuple[str, list[Text]]]) -> None:
         table.add_row(*cells, key=key)
     if parked is None:
         return
-    try:
+    with contextlib.suppress(RowDoesNotExist):
         table.move_cursor(row=table.get_row_index(parked), scroll=False)
-    except RowDoesNotExist:
-        pass
 
 
 def cursor_key(table: DataTable) -> str | None:

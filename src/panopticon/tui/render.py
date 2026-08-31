@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 
 from rich.console import Group, RenderableType
+from rich.padding import Padding
 from rich.table import Table
 from rich.text import Text
 
@@ -35,22 +36,27 @@ from panopticon.tui.format import (
 
 AGENT_COLUMNS = (
     ("", 1),
-    ("agent", 12),
-    ("provider", 14),
+    ("agent", 10),
+    ("provider", 18),
     ("situation", 17),
     ("turns", 5),
-    ("context", 14),
+    ("context", 13),
     ("last action", 26),
     ("up", 7),
 )
 
 TASK_COLUMNS = (
-    ("task", 34),
+    ("task", 30),
     ("seats", 6),
     ("state", 16),
-    ("holders", 28),
+    ("holders", 22),
     ("age", 7),
 )
+
+
+def indent(renderable: RenderableType, by: int = 2) -> Padding:
+    """Real padding, so a wrapped second line keeps the indent."""
+    return Padding(renderable, (0, 0, 0, by))
 
 
 def kv(rows: list[tuple[str, RenderableType]]) -> Table:
@@ -69,7 +75,7 @@ def agent_row(agent: Agent, window: int, now: float) -> list[Text]:
     return [
         Text(mark, style=style),
         Text(agent.name, style=f"bold {style}" if agent.alive else style),
-        Text(clip(agent.provider, 14), style=DIM),
+        Text(clip(agent.provider, 18), style=DIM),
         Text(SITUATION_LABEL[agent.situation], style=SITUATION_STYLE[agent.situation]),
         Text(str(agent.turns), style=DIM, justify="right"),
         Text(ctx_text, style=ctx_style),
@@ -83,10 +89,10 @@ def task_row(task: Task, now: float) -> list[Text]:
     filled = sum(1 for s in task.seats if s.holder)
     holders = ", ".join(task.holders) or "-"
     return [
-        Text(clip(task.title, 34), style=INK if not task.archived_at else FAINT),
+        Text(clip(task.title, 30), style=INK if not task.archived_at else FAINT),
         Text(f"{filled}/{len(task.seats)}", style=DIM, justify="right"),
         Text(label, style=style),
-        Text(clip(holders, 28), style=DIM),
+        Text(clip(holders, 22), style=DIM),
         Text(since(task.created_at, now), style=DIM, justify="right"),
     ]
 
@@ -99,7 +105,7 @@ def shout_block(shouts: list[Shout], limit: int, human: str = "human") -> Render
         head = Text(f"{clock(shout.at)} ", style=FAINT)
         head.append(shout.sender, style=f"bold {ACCENT if shout.sender == human else BLUE}")
         lines.append(head)
-        lines.append(Text(f"  {oneline(shout.body, 400)}", style=INK))
+        lines.append(indent(Text(oneline(shout.body, 400), style=INK)))
     return Group(*lines)
 
 
@@ -139,7 +145,7 @@ def pairs_grid(rows: list[tuple[str, RenderableType]], columns: int = 2) -> Tabl
     grid = Table.grid(padding=(0, 2))
     for _ in range(columns):
         grid.add_column(style=DIM, justify="right", width=11)
-        grid.add_column(style=INK, width=30)
+        grid.add_column(style=INK, width=34)
     per_column = -(-len(rows) // columns)
     for index in range(per_column):
         cells: list[RenderableType] = []
@@ -158,7 +164,10 @@ def agent_stats(agent: Agent, window: int, waiting: str, now: float) -> Renderab
         context.append(f"  {usage.context_tokens:,} / {window:,}", style=DIM)
     rows: list[tuple[str, RenderableType]] = [
         ("provider", Text(agent.provider, style=INK)),
-        ("situation", Text(SITUATION_LABEL[agent.situation], style=SITUATION_STYLE[agent.situation])),
+        (
+            "situation",
+            Text(SITUATION_LABEL[agent.situation], style=SITUATION_STYLE[agent.situation]),
+        ),
         ("turns", Text(str(agent.turns), style=INK)),
         ("lifetime", Text(since(agent.born_at, now), style=INK)),
         ("context", context),
@@ -176,7 +185,7 @@ def agent_stats(agent: Agent, window: int, waiting: str, now: float) -> Renderab
         ),
         ("last action", Text(oneline(agent.last_action or "-", 30), style=INK)),
     ]
-    waiting_line = Text("waiting on  ", style=DIM)
+    waiting_line = Text(f"{'waiting on':>11}  ", style=DIM)
     waiting_line.append(clip(waiting, 120), style=BLUE)
     return Group(pairs_grid(rows), Text(), waiting_line)
 
@@ -217,9 +226,9 @@ def truths_block(truths: list[Truth], now: float) -> RenderableType:
         head = Text("+ ", style=GREEN)
         head.append(truth.title, style=f"bold {INK}")
         lines.append(head)
-        lines.append(Text(f"  {truth.body}", style=DIM))
+        lines.append(indent(Text(truth.body, style=DIM)))
         lines.append(
-            Text(f"  {truth.submitted_by} · {since(truth.accepted_at, now)} ago", style=FAINT)
+            indent(Text(f"{truth.submitted_by} · {since(truth.accepted_at, now)} ago", style=FAINT))
         )
         lines.append(Text())
     return Group(*lines)
@@ -233,19 +242,19 @@ def pending_block(pending: list[Submission], now: float) -> RenderableType:
         head = Text("? ", style=AMBER)
         head.append(sub.title, style=f"bold {AMBER}")
         lines.append(head)
-        lines.append(Text(f"  {sub.body}", style=DIM))
-        meta = Text(f"  {sub.submitted_by} · {since(sub.submitted_at, now)} ago · ", style=FAINT)
+        lines.append(indent(Text(sub.body, style=DIM)))
+        meta = Text(f"{sub.submitted_by} · {since(sub.submitted_at, now)} ago · ", style=FAINT)
         meta.append(tally(sub), style=INK)
         if sub.restated_from:
             meta.append("  restated", style=VIOLET)
-        lines.append(meta)
+        lines.append(indent(meta))
         jurors = ", ".join(sub.jurors) or "none seated"
-        lines.append(Text(f"  jurors: {jurors}", style=VIOLET if sub.jurors else FAINT))
+        lines.append(indent(Text(f"jurors: {jurors}", style=VIOLET if sub.jurors else FAINT)))
         for verdict in sub.verdicts:
-            line = Text(f"  {verdict.juror} ", style=DIM)
+            line = Text(f"{verdict.juror} ", style=DIM)
             line.append(str(verdict.call), style=VERDICT_STYLE[str(verdict.call)])
             line.append(f"  {oneline(verdict.reasoning, 160)}", style=DIM)
-            lines.append(line)
+            lines.append(indent(line))
         lines.append(Text())
     return Group(*lines)
 

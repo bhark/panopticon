@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import time
+from typing import ClassVar
 
 from rich.text import Text
 from textual.app import ComposeResult
-from textual.binding import Binding
+from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, VerticalScroll
 from textual.widgets import Footer, Static
 
@@ -16,7 +17,7 @@ from panopticon.tui.render import pending_block, truths_block
 
 
 class KnowledgeScreen(LiveScreen):
-    BINDINGS = [Binding("escape", "app.pop_screen", "back")]
+    BINDINGS: ClassVar[list[BindingType]] = [Binding("escape", "app.pop_screen", "back")]
 
     def compose(self) -> ComposeResult:
         yield Static(id="detailbar")

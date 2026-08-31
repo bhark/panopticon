@@ -37,8 +37,7 @@ async def view_knowledge_base(ctx: ToolCtx, args: dict[str, Any]) -> ActionResul
     ),
     body=ArgSpec(
         "string",
-        "Tight expansion and proof: the path, the command, the output that shows it. A few "
-        "lines.",
+        "Tight expansion and proof: the path, the command, the output that shows it. A few lines.",
     ),
 )
 async def submit_truth(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
