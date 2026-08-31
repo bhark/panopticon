@@ -6,5 +6,3 @@ and a knowledge base whose entries have to pass a jury of their peers. You watch
 you can shout at them.
 
     uv run panopticon start
-
-See `DESIGN.md`.
