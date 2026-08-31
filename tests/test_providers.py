@@ -141,7 +141,7 @@ class TestClaudeCLI:
         assert cli_claude.parse_output(stdout, TOOLS).action is not None
 
     def test_the_invocation_keeps_every_load_bearing_flag(self):
-        argv = cli_claude.ClaudeCLI("claude", model="haiku")._argv("sys", "hi", {"type": "object"})
+        argv = cli_claude.ClaudeCLI(model="haiku")._argv("sys", "hi", {"type": "object"})
         assert argv[argv.index("--output-format") + 1] == "stream-json"
         assert "--verbose" in argv  # stream-json hard errors without it
         assert argv[argv.index("--tools") + 1] == ""
@@ -151,7 +151,7 @@ class TestClaudeCLI:
         assert "--no-session-persistence" in argv
 
     async def test_a_missing_binary_comes_back_as_an_error_not_an_exception(self):
-        provider = cli_claude.ClaudeCLI("claude", model="haiku", bin="claude-does-not-exist")
+        provider = cli_claude.ClaudeCLI(model="haiku", bin="claude-does-not-exist")
         response = await provider.act(request())
         assert response.action is None
         assert "could not start" in response.error
@@ -210,7 +210,7 @@ class TestCodexCLI:
 
     def test_the_invocation_passes_the_prompt_as_argv_and_prepends_the_system_prompt(self):
         """There is no --append-system-prompt, and a piped stdin arrives as a <stdin> block."""
-        argv = cli_codex.CodexCLI("codex", model="gpt-5.1")._argv(
+        argv = cli_codex.CodexCLI(model="gpt-5.1")._argv(
             "SYS\n\nUSER", "/tmp", "/tmp/s.json"
         )
         assert argv[-1] == "SYS\n\nUSER"
@@ -219,7 +219,7 @@ class TestCodexCLI:
         assert {"--ephemeral", "--ignore-user-config", "--skip-git-repo-check"} <= set(argv)
 
     async def test_a_missing_binary_comes_back_as_an_error(self):
-        provider = cli_codex.CodexCLI("codex", model="x", bin="codex-does-not-exist")
+        provider = cli_codex.CodexCLI(model="x", bin="codex-does-not-exist")
         response = await provider.act(request())
         assert response.action is None and "could not start" in response.error
 
@@ -235,7 +235,8 @@ class TestKimiCLI:
         response = cli_kimi.parse_output(fixture("kimi_wrong_shape.ndjson"), TOOLS)
         assert response.action is None
         assert "no 'tool' field" in response.error
-        assert response.raw == '{"action": "wait", "minutes": 5}'
+        # the error carries what kimi actually sent, so the next turn can be told
+        assert '{"action": "wait", "minutes": 5}' in response.error
 
     def test_meta_lines_are_ignored(self):
         assert cli_kimi.assistant_text(fixture("kimi_success.ndjson")).startswith('{"tool"')
@@ -247,7 +248,7 @@ class TestKimiCLI:
             prompts.append(argv[argv.index("-p") + 1])
             return _cli.Completed(fixture("kimi_wrong_shape.ndjson"), "", 0)
 
-        provider = cli_kimi.KimiCLI("kimi", model="k3")
+        provider = cli_kimi.KimiCLI(model="k3")
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(_cli, "run", fake_run)
             response = await provider.act(request())
@@ -268,7 +269,7 @@ class TestKimiCLI:
 
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(_cli, "run", fake_run)
-            response = await cli_kimi.KimiCLI("kimi", model="k3").act(request())
+            response = await cli_kimi.KimiCLI(model="k3").act(request())
 
         assert calls == 1 and response.action.tool == "wait"
 
@@ -276,7 +277,7 @@ class TestKimiCLI:
 class TestOpenRouter:
     def _provider(self, handler, **kwargs) -> api_openrouter.OpenRouter:
         client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-        return api_openrouter.OpenRouter("or", model="m", backoff=0.0, client=client, **kwargs)
+        return api_openrouter.OpenRouter(model="m", backoff=0.0, client=client, **kwargs)
 
     def _ok(self, content: str) -> httpx.Response:
         return httpx.Response(
@@ -419,7 +420,6 @@ class TestRegistry:
         )
         assert provider.context_window == 900_000
         assert provider.bin == "/opt/claude"
-        assert provider.key == "claude"
 
     def test_api_only_settings_do_not_leak_into_a_cli_adapter(self):
         provider = registry.build(

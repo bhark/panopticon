@@ -64,11 +64,10 @@ class PanopticonApp(App[None]):
         self.on_pause: Callable[[], None] = lambda: None
         self.on_force_end: Callable[[], None] = lambda: None
         self.human_name = "human"
-        self.started_at = float(getattr(harness, "started_at", None) or time.time())
+        self.started_at = harness.started_at
         self.events: deque[Event] = deque(maxlen=EVENT_LOG)
         self.paint = Coalescer()
         self.pausing = False
-        self._window = getattr(harness, "context_window", None)
 
     def get_default_screen(self) -> Screen[None]:
         return OverviewScreen()
@@ -88,10 +87,10 @@ class PanopticonApp(App[None]):
     # reads
 
     def context_window(self, provider: str) -> int:
-        return int(self._window(provider)) if self._window else 0
+        return self.harness.context_window(provider)
 
     def banner(self) -> str:
-        if getattr(self.harness, "force_ending", False):
+        if self.harness.force_ending:
             return "force ending · draining"
         if self.pausing:
             return "pausing · draining"

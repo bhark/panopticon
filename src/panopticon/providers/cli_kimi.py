@@ -23,14 +23,12 @@ SHAPE = (
 class KimiCLI:
     def __init__(
         self,
-        key: str,
         *,
         model: str,
         context_window: int = 262_144,
         timeout: float = _cli.DEFAULT_TIMEOUT,
         bin: str = "kimi",
     ) -> None:
-        self.key = key
         self.context_window = context_window
         self.model = model
         self.timeout = timeout
@@ -50,7 +48,7 @@ class KimiCLI:
     async def _once(self, prompt: str, req: TurnRequest) -> TurnResponse:
         done = await _cli.run(self._argv(prompt), cwd=req.cwd, timeout=self.timeout)
         if done.error:
-            return TurnResponse(error=done.error, raw=_cli.tail(done.stderr))
+            return TurnResponse(error=_cli.because(done.error, done.stderr))
         return parse_output(done.stdout, req.tools, code=done.code, stderr=done.stderr)
 
     async def summarize(self, system: str, text: str) -> str | None:
@@ -65,11 +63,10 @@ def parse_output(stdout: str, tools: list, *, code: int = 0, stderr: str = "") -
     message = assistant_text(stdout)
     if not message:
         return TurnResponse(
-            error=f"kimi exited {code} with no assistant message",
-            raw=_cli.tail(stderr or stdout),
+            error=_cli.because(f"kimi exited {code} with no assistant message", stderr or stdout)
         )
     action, error = parse_action(message, tools)
-    return TurnResponse(action=action, error=error, raw=message)
+    return TurnResponse(action=action, error=error and _cli.because(error, message))
 
 
 def assistant_text(stdout: str) -> str:

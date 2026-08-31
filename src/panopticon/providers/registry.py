@@ -37,5 +37,4 @@ def build(key: str, cfg: dict[str, Any]) -> Provider:
     if kind != "mock" and not cfg.get("model"):
         raise ValueError(f"provider {key!r} has no model")
     kwargs = {name: cfg[name] for name in _ACCEPTS[kind] if cfg.get(name) is not None}
-    # by keyword: the mock takes its script first, the CLI adapters take the key
-    return _KINDS[kind](key=key, **kwargs)
+    return _KINDS[kind](**kwargs)

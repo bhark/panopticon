@@ -24,11 +24,9 @@ class TurnResponse:
     action: Action | None = None
     usage: Usage = field(default_factory=Usage)
     error: str | None = None
-    raw: str = ""
 
 
 class Provider(Protocol):
-    key: str
     context_window: int
 
     async def act(self, req: TurnRequest) -> TurnResponse: ...

@@ -19,14 +19,12 @@ from panopticon.providers.base import TurnRequest, TurnResponse, action_schema, 
 class ClaudeCLI:
     def __init__(
         self,
-        key: str,
         *,
         model: str,
         context_window: int = 200_000,
         timeout: float = _cli.DEFAULT_TIMEOUT,
         bin: str = "claude",
     ) -> None:
-        self.key = key
         self.context_window = context_window
         self.model = model
         self.timeout = timeout
@@ -61,10 +59,11 @@ class ClaudeCLI:
         argv = self._argv(req.system, req.prompt, action_schema(req.tools))
         done = await _cli.run(argv, cwd=req.cwd, timeout=self.timeout)
         if done.error:
-            return TurnResponse(error=done.error, raw=_cli.tail(done.stderr))
+            return TurnResponse(error=_cli.because(done.error, done.stderr))
         return parse_output(done.stdout, req.tools) or TurnResponse(
-            error=f"claude exited {done.code} with no result event",
-            raw=_cli.tail(done.stderr or done.stdout),
+            error=_cli.because(
+                f"claude exited {done.code} with no result event", done.stderr or done.stdout
+            )
         )
 
     async def summarize(self, system: str, text: str) -> str | None:
@@ -87,14 +86,12 @@ def parse_output(stdout: str, tools: list) -> TurnResponse | None:
     usage = _usage(event)
     if event.get("is_error"):
         reason = event.get("terminal_reason") or event.get("subtype") or "error"
-        return TurnResponse(
-            error=f"{reason}: {event.get('result')}", usage=usage, raw=str(event.get("result", ""))
-        )
+        return TurnResponse(error=f"{reason}: {event.get('result')}", usage=usage)
     # structured_output is the same object as `result`, already decoded
     structured = event.get("structured_output")
     raw = json.dumps(structured) if isinstance(structured, dict) else str(event.get("result") or "")
     action, error = parse_action(raw, tools)
-    return TurnResponse(action=action, usage=usage, error=error, raw=raw)
+    return TurnResponse(action=action, usage=usage, error=error and _cli.because(error, raw))
 
 
 def _result_event(stdout: str) -> dict | None:

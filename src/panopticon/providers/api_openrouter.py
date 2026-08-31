@@ -24,7 +24,6 @@ RETRY_STATUS = (408, 429, 500, 502, 503, 504)
 class OpenRouter:
     def __init__(
         self,
-        key: str,
         *,
         model: str,
         api_key_env: str = "OPENROUTER_API_KEY",
@@ -35,7 +34,6 @@ class OpenRouter:
         backoff: float = 1.0,
         client: httpx.AsyncClient | None = None,
     ) -> None:
-        self.key = key
         self.context_window = context_window
         self.model = model
         self.api_key_env = api_key_env
@@ -60,7 +58,7 @@ class OpenRouter:
         if not content:
             return TurnResponse(error="openrouter returned no content", usage=usage)
         action, parse_error = parse_action(content, req.tools)
-        return TurnResponse(action=action, usage=usage, error=parse_error, raw=content)
+        return TurnResponse(action=action, usage=usage, error=parse_error)
 
     async def summarize(self, system: str, text: str) -> str | None:
         data, _ = await self._post(_body(self.model, system, text))

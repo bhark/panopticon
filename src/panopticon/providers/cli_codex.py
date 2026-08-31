@@ -20,14 +20,12 @@ from panopticon.providers.base import TurnRequest, TurnResponse, parse_action, s
 class CodexCLI:
     def __init__(
         self,
-        key: str,
         *,
         model: str,
         context_window: int = 272_000,
         timeout: float = _cli.DEFAULT_TIMEOUT,
         bin: str = "codex",
     ) -> None:
-        self.key = key
         self.context_window = context_window
         self.model = model
         self.timeout = timeout
@@ -63,7 +61,7 @@ class CodexCLI:
         finally:
             os.unlink(path)
         if done.error:
-            return TurnResponse(error=done.error, raw=_cli.tail(done.stderr))
+            return TurnResponse(error=_cli.because(done.error, done.stderr))
         return parse_output(done.stdout, req.tools, code=done.code, stderr=done.stderr)
 
     async def summarize(self, system: str, text: str) -> str | None:
@@ -78,15 +76,16 @@ class CodexCLI:
 def parse_output(stdout: str, tools: list, *, code: int = 0, stderr: str = "") -> TurnResponse:
     message, error, usage = _scan(stdout)
     if error:
-        return TurnResponse(error=error, usage=usage, raw=error)
+        return TurnResponse(error=error, usage=usage)
     if not message:
         return TurnResponse(
-            error=f"codex exited {code} with no agent message",
+            error=_cli.because(f"codex exited {code} with no agent message", stderr or stdout),
             usage=usage,
-            raw=_cli.tail(stderr or stdout),
         )
     action, parse_error = parse_action(message, tools)
-    return TurnResponse(action=action, usage=usage, error=parse_error, raw=message)
+    return TurnResponse(
+        action=action, usage=usage, error=parse_error and _cli.because(parse_error, message)
+    )
 
 
 def _scan(stdout: str) -> tuple[str, str | None, Usage]:

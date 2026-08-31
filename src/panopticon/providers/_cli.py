@@ -77,6 +77,7 @@ def ndjson(text: str) -> Iterator[dict]:
             yield event
 
 
-def tail(text: str, limit: int = 400) -> str:
-    text = text.strip()
-    return text[-limit:] if len(text) > limit else text
+def because(error: str, detail: str, limit: int = 400) -> str:
+    """The failure, plus the tail of whatever the CLI actually printed."""
+    detail = detail.strip()[-limit:]
+    return f"{error}\n{detail}" if detail else error

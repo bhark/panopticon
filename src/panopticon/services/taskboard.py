@@ -71,7 +71,6 @@ class TaskBoard:
         return None
 
     def render(self) -> str:
-        """The view returned by the view_task_board tool."""
         now = time.time()
         lines: list[str] = []
         open_tasks = self.open_tasks()

@@ -42,9 +42,7 @@ def _dump_agent(agent: Agent) -> dict[str, Any]:
     for f in fields(agent):
         if f.name in RUNTIME_FIELDS:
             continue
-        out[f.name] = (
-            dump(getattr(agent, f.name)) if f.name in ("usage",) else getattr(agent, f.name)
-        )
+        out[f.name] = dump(getattr(agent, f.name))
     out["entries"] = [dump(e) for e in agent.entries]
     return out
 

@@ -21,12 +21,10 @@ class MockProvider:
         self,
         script: Script | None = None,
         *,
-        key: str = "mock",
         context_window: int = 200_000,
         summary: str | None = "summary of earlier turns",
         context_tokens: int = 0,
     ) -> None:
-        self.key = key
         self.context_window = context_window
         self.summary = summary
         self.context_tokens = context_tokens
@@ -40,7 +38,7 @@ class MockProvider:
         action = self._next(req)
         if action is None:
             return TurnResponse(error=f"mock script exhausted for {req.agent}", usage=usage)
-        return TurnResponse(action=action, usage=usage, raw=f"{action.tool} {action.args}")
+        return TurnResponse(action=action, usage=usage)
 
     async def summarize(self, system: str, text: str) -> str | None:
         self.summarized.append(text)
