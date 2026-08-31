@@ -19,19 +19,12 @@ _KINDS = {
     "mock": MockProvider,
 }
 
-# what each engine actually gives us, so config only has to say so when it differs
-_WINDOWS = {
-    "claude_cli": 200_000,
-    "codex_cli": 272_000,
-    "kimi_cli": 262_144,
-    "openrouter": 128_000,
-    "mock": 200_000,
-}
+_CLI_ARGS = ("model", "context_window", "timeout", "bin")
 
 _ACCEPTS = {
-    "claude_cli": ("model", "context_window", "timeout", "bin"),
-    "codex_cli": ("model", "context_window", "timeout", "bin"),
-    "kimi_cli": ("model", "context_window", "timeout", "bin"),
+    "claude_cli": _CLI_ARGS,
+    "codex_cli": _CLI_ARGS,
+    "kimi_cli": _CLI_ARGS,
     "openrouter": ("model", "context_window", "timeout", "api_key_env", "base_url"),
     "mock": ("context_window",),
 }
@@ -44,5 +37,5 @@ def build(key: str, cfg: dict[str, Any]) -> Provider:
     if kind != "mock" and not cfg.get("model"):
         raise ValueError(f"provider {key!r} has no model")
     kwargs = {name: cfg[name] for name in _ACCEPTS[kind] if cfg.get(name) is not None}
-    kwargs.setdefault("context_window", _WINDOWS[kind])
-    return _KINDS[kind](key, **kwargs)
+    # by keyword: the mock takes its script first, the CLI adapters take the key
+    return _KINDS[kind](key=key, **kwargs)

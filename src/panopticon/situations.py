@@ -102,7 +102,7 @@ def tool_names(agent: Agent, harness: Harness) -> list[str]:
             names.remove(FINALIZE_TASK)
             names.append(CANCEL_FINALIZE)
 
-    if harness.force_ending and agent.situation not in (Situation.RELIEVED, Situation.DEAD):
+    if harness.force_ending and agent.alive:
         names.append(RELIEVE_SELF)
 
     return names

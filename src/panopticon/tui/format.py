@@ -8,9 +8,10 @@ functions.
 from __future__ import annotations
 
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 
-from panopticon.model import Agent, Entry, Situation, Submission, Task
+from panopticon.model import Agent, Entry, Situation, Submission, Task, VerdictCall
 
 # palette; a calm slate board with one accent, kept here so tables and CSS agree
 INK = "#c8d0da"
@@ -53,7 +54,11 @@ ENTRY_STYLE: dict[str, str] = {
     "note": DIM,
 }
 
-VERDICT_STYLE = {"true": GREEN, "false": RED, "restate": AMBER}
+VERDICT_STYLE: dict[VerdictCall, str] = {
+    VerdictCall.TRUE: GREEN,
+    VerdictCall.FALSE: RED,
+    VerdictCall.RESTATE: AMBER,
+}
 
 TRANSCRIPT_TAIL = 250  # entries kept on screen; older ones stay in the log, not the eye
 ENTRY_CLIP = 3000
@@ -134,7 +139,7 @@ def agent_mark(agent: Agent) -> tuple[str, str]:
 
 
 def task_state(task: Task) -> tuple[str, str]:
-    filled = sum(1 for s in task.seats if s.holder)
+    filled = len(task.holders)
     finalized = sum(1 for s in task.seats if s.finalization)
     if task.archived_at:
         return "closed", FAINT
@@ -148,10 +153,8 @@ def task_state(task: Task) -> tuple[str, str]:
 
 
 def tally(submission: Submission) -> str:
-    counts = {"true": 0, "false": 0, "restate": 0}
-    for verdict in submission.verdicts:
-        counts[str(verdict.call)] += 1
-    return f"{counts['true']} true / {counts['false']} false / {counts['restate']} restate"
+    counts = Counter(v.call for v in submission.verdicts)
+    return " / ".join(f"{counts[call]} {call.value}" for call in VerdictCall)
 
 
 def describe_wait(
@@ -166,8 +169,7 @@ def describe_wait(
     if agent.inbox:
         return f"nothing; {len(agent.inbox)} queued to drain next turn"
     if agent.situation is Situation.WAITING_FOR_SEATS and task:
-        filled = sum(1 for s in task.seats if s.holder)
-        return f"seats on {task.title!r}: {filled}/{len(task.seats)} filled"
+        return f"seats on {task.title!r}: {len(task.holders)}/{len(task.seats)} filled"
     if agent.situation is Situation.ON_TASK and task:
         return f"work on {task.title!r}"
     if agent.situation is Situation.JURY and submission:

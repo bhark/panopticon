@@ -86,7 +86,7 @@ def agent_row(agent: Agent, window: int, now: float) -> list[Text]:
 
 def task_row(task: Task, now: float) -> list[Text]:
     label, style = task_state(task)
-    filled = sum(1 for s in task.seats if s.holder)
+    filled = len(task.holders)
     holders = ", ".join(task.holders) or "-"
     return [
         Text(clip(task.title, 30), style=INK if not task.archived_at else FAINT),
@@ -252,7 +252,7 @@ def pending_block(pending: list[Submission], now: float) -> RenderableType:
         lines.append(indent(Text(f"jurors: {jurors}", style=VIOLET if sub.jurors else FAINT)))
         for verdict in sub.verdicts:
             line = Text(f"{verdict.juror} ", style=DIM)
-            line.append(str(verdict.call), style=VERDICT_STYLE[str(verdict.call)])
+            line.append(verdict.call.value, style=VERDICT_STYLE[verdict.call])
             line.append(f"  {oneline(verdict.reasoning, 160)}", style=DIM)
             lines.append(indent(line))
         lines.append(Text())

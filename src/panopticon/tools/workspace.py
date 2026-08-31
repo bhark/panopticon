@@ -122,9 +122,10 @@ async def read_file(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     limit = min(limit, MAX_LINES)
 
     try:
-        lines = target.read_text(errors="replace").splitlines()
+        text = await asyncio.to_thread(target.read_text, errors="replace")
     except OSError as exc:
         return ActionResult.fail(f"Could not read {_shown(root, target)}: {exc}")
+    lines = text.splitlines()
     if offset > len(lines):
         return ActionResult.fail(
             f"{_shown(root, target)} has {len(lines)} lines; offset {offset} is past the end."
@@ -157,8 +158,8 @@ async def write_file(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     existed = target.exists()
     content = args["content"]
     try:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content)
+        await asyncio.to_thread(target.parent.mkdir, parents=True, exist_ok=True)
+        await asyncio.to_thread(target.write_text, content)
     except OSError as exc:
         return ActionResult.fail(f"Could not write {_shown(root, target)}: {exc}")
     what = "Overwrote" if existed else "Created"
@@ -190,7 +191,7 @@ async def edit_file(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
         return ActionResult.fail("old and new are identical, so this edit would change nothing.")
 
     try:
-        content = target.read_text()
+        content = await asyncio.to_thread(target.read_text)
     except (OSError, UnicodeDecodeError) as exc:
         return ActionResult.fail(f"Could not read {_shown(root, target)}: {exc}")
 
@@ -208,7 +209,7 @@ async def edit_file(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
         )
 
     try:
-        target.write_text(content.replace(old, new, 1))
+        await asyncio.to_thread(target.write_text, content.replace(old, new, 1))
     except OSError as exc:
         return ActionResult.fail(f"Could not write {shown}: {exc}")
     return ActionResult(True, f"Edited {shown}.")

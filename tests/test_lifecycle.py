@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from panopticon.cli import rebuild
 from panopticon.config import Config
 from panopticon.model import Action, Agent, QueueItem, Situation
 from panopticon.orchestrator import Orchestrator
@@ -54,6 +55,14 @@ def build(tmp_path: Path, policy) -> Orchestrator:
         worktrees=Worktrees(repo, store.worktrees),
         config=Config(),
     )
+
+
+async def until(cond, timeout: float = 10.0) -> None:
+    deadline = asyncio.get_running_loop().time() + timeout
+    while not cond():
+        if asyncio.get_running_loop().time() > deadline:
+            raise AssertionError("condition never held")
+        await asyncio.sleep(0.001)
 
 
 class Crowd:
@@ -222,3 +231,61 @@ async def test_an_agent_survives_its_own_worktree_being_removed(tmp_path):
     shutil.rmtree(worktree)
     assert orch._cwd_for(agent) == str(orch.worktrees.repo)
     assert Path(orch._cwd_for(agent)).is_dir()
+
+
+@pytest.mark.asyncio
+async def test_resuming_a_settled_session_closes_without_spending_a_turn(tmp_path):
+    """Resuming a finished run used to wake every released agent and call its provider."""
+    provider = MockProvider(lambda req: Action("wait", {}))
+    repo = git_repo(tmp_path / "repo")
+    store = Store(repo / STATE_DIRNAME)
+    agents = [
+        Agent(name=n, provider="mock", situation=Situation.RELEASED, voted_goal_reached=True)
+        for n in ("Ada", "Bo", "Cy")
+    ]
+    orch = Orchestrator(
+        goal=GOAL,
+        agents=agents,
+        providers={"mock": provider},
+        store=store,
+        worktrees=Worktrees(repo, store.worktrees),
+        config=Config(),
+    )
+    await asyncio.wait_for(orch.run(), timeout=5)
+
+    assert orch.stopped_because.startswith("goal reached")
+    assert provider.calls == []
+
+
+@pytest.mark.asyncio
+async def test_a_run_paused_mid_task_resumes_and_finishes_the_job(tmp_path):
+    """The headline feature: pausing partway and picking the same run back up."""
+    crowd = Crowd()
+    first = build(tmp_path, crowd)
+    crowd.orch = first
+    runner = asyncio.create_task(first.run())
+    await until(lambda: any(t.running for t in first.board.tasks.values()))
+    await first.pause()
+    await asyncio.wait_for(runner, timeout=5)
+
+    assert not first.board.archive(), "the pause has to land while there is still work left"
+    assert not first.kb.truths
+    turns_before = {n: a.turns for n, a in first.agents.items()}
+
+    second = rebuild(
+        first.store,
+        Config(),
+        {"mock": MockProvider(crowd)},
+        first.worktrees.repo,
+    )
+    crowd.orch = second
+    assert [t.id for t in second.board.tasks.values()] == [t.id for t in first.board.tasks.values()]
+    assert all(second.agents[n].turns == t for n, t in turns_before.items())
+
+    await asyncio.wait_for(second.run(), timeout=30)
+
+    assert second.stopped_because.startswith("goal reached"), second.stopped_because
+    assert second.kb.truths
+    assert second.board.archive()
+    # it carried on rather than starting over
+    assert any(second.agents[n].turns > t for n, t in turns_before.items())

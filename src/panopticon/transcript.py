@@ -111,7 +111,7 @@ def estimate_tokens(agent: Agent) -> int:
 
 
 def _estimate(entries: list[Entry]) -> int:
-    chars = sum(len(line) + 1 for line in _lines(entries))
+    chars = sum(len(e.text) + _TAG_WIDTH + 1 for e in entries)
     return -(-chars // _CHARS_PER_TOKEN)
 
 

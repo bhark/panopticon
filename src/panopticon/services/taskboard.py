@@ -55,7 +55,7 @@ class TaskBoard:
         open_tasks = self.open_tasks()
         lines.append(f"open tasks ({len(open_tasks)})" if open_tasks else "open tasks: none")
         for task in open_tasks:
-            taken = sum(1 for s in task.seats if s.holder)
+            taken = len(task.holders)
             state = (
                 f"running {_ago(task.started_at or now, now)}"
                 if task.running

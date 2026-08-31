@@ -30,7 +30,7 @@ DEFAULTS: dict[str, dict] = {
         "enabled": True,
     },
     "openrouter": {
-        "kind": "openai_api",
+        "kind": "openrouter",
         "base_url": "https://openrouter.ai/api/v1",
         "model": "anthropic/claude-sonnet-4.5",
         "context_window": 200_000,

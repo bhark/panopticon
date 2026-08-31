@@ -80,6 +80,11 @@ class Orchestrator:
     async def run(self) -> None:
         self.store.prepare()
         self.emit(Event("session", f"panopticon opened: {self.goal}"))
+        # a resumed session may already be settled; do not spend a turn discovering that
+        self.tally_goal()
+        if self._stop.is_set():
+            self.save()
+            return
         background = [
             asyncio.create_task(self.bus.run(), name="bus"),
             asyncio.create_task(self.janitor.run(), name="janitor"),

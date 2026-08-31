@@ -90,7 +90,7 @@ class OverviewScreen(LiveScreen):
         tasks = list(harness.board.tasks.values())
         open_tasks = [t for t in tasks if not t.archived_at]
         seats = [s for t in open_tasks for s in t.seats]
-        filled = sum(1 for s in seats if s.holder)
+        filled = sum(len(t.holders) for t in open_tasks)
         pending = list(harness.kb.pending.values())
         unseated = sum(1 for s in pending if not s.jurors)
 

@@ -13,6 +13,7 @@ from panopticon import store as store_mod
 from panopticon.config import Config
 from panopticon.model import Agent, Situation
 from panopticon.orchestrator import Orchestrator
+from panopticon.providers.base import Provider
 from panopticon.providers.registry import build
 from panopticon.services.worktrees import Worktrees
 from panopticon.store import STATE_DIRNAME, Store
@@ -118,25 +119,16 @@ def _start(args: argparse.Namespace) -> int:
     return _run(orch, args.headless)
 
 
-def _resume(args: argparse.Namespace) -> int:
-    cwd = Path.cwd()
-    store = Store(cwd / STATE_DIRNAME)
-    if not store.exists():
-        print(f"no saved panopticon in {cwd / STATE_DIRNAME}", file=sys.stderr)
-        return 1
+def rebuild(store: Store, cfg: Config, providers: dict[str, Provider], repo: Path) -> Orchestrator:
+    """Put a saved panopticon back together. Shared by `resume` and its tests."""
     state = store.load()
-    cfg = config_mod.load()
     agents = [store_mod.restore_agent(a) for a in state["agents"]]
-    usable, code = _providers(cfg, sorted({a.provider for a in agents}))
-    if code:
-        return code
-
     orch = Orchestrator(
         goal=state["goal"],
         agents=agents,
-        providers={k: build(k, v) for k, v in usable.items()},
+        providers=providers,
         store=store,
-        worktrees=Worktrees(cwd, store.worktrees),
+        worktrees=Worktrees(repo, store.worktrees),
         config=cfg,
         started_at=state["started_at"],
     )
@@ -149,12 +141,25 @@ def _resume(args: argparse.Namespace) -> int:
         submission = store_mod.restore_submission(raw)
         orch.kb.pending[submission.id] = submission
     orch.bus.shouts = [store_mod.restore_shout(s) for s in state.get("shouts", [])]
-
-    # an agent that was mid-turn when we paused resumes by taking that turn again
+    # whoever was mid-turn when we paused simply takes that turn again
     for agent in agents:
-        if agent.situation is Situation.DEAD:
-            continue
-        agent.wake_at = None
+        if agent.situation is not Situation.DEAD:
+            agent.wake_at = None
+    return orch
+
+
+def _resume(args: argparse.Namespace) -> int:
+    cwd = Path.cwd()
+    store = Store(cwd / STATE_DIRNAME)
+    if not store.exists():
+        print(f"no saved panopticon in {cwd / STATE_DIRNAME}", file=sys.stderr)
+        return 1
+    cfg = config_mod.load()
+    wanted = sorted({a["provider"] for a in store.load()["agents"]})
+    usable, code = _providers(cfg, wanted)
+    if code:
+        return code
+    orch = rebuild(store, cfg, {k: build(k, v) for k, v in usable.items()}, cwd)
     return _run(orch, args.headless)
 
 
