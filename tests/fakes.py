@@ -194,10 +194,12 @@ class FakeHarness:
     def emit(self, event: Event) -> None:
         self.events.append(event)
 
-    def enter(self, agent: Agent, situation: Situation, preprompt: str) -> None:
+    def enter(self, agent: Agent, situation: Situation, note: str = "") -> None:
         agent.situation = situation
         agent.entries.clear()
-        self.entered.append((agent.name, situation, preprompt))
+        self.entered.append(
+            (agent.name, situation, situation_preprompt(agent, self, note, situation))
+        )
 
     async def launch_task(self, task: Task) -> None:
         worktree = await self.worktrees.create(task.id)
@@ -205,11 +207,7 @@ class FakeHarness:
         for name in task.holders:
             holder = self.agents[name]
             holder.task_id = task.id
-            self.enter(
-                holder,
-                Situation.ON_TASK,
-                situation_preprompt(holder, self, "", Situation.ON_TASK),
-            )
+            self.enter(holder, Situation.ON_TASK)
         self.launched.append(task)
 
     def resettle_jury(self, old_id, outcome, submission, exclude=()):
@@ -228,11 +226,7 @@ class FakeHarness:
         seat.holder, seat.finalization = None, None
         leaver = self.agents[name]
         leaver.task_id = None
-        self.enter(
-            leaver,
-            Situation.IDLE,
-            situation_preprompt(leaver, self, f"You left task {task.id}.", Situation.IDLE),
-        )
+        self.enter(leaver, Situation.IDLE, f"You left task {task.id}.")
         if task.started_at is not None:
             task.started_at = None
             for other in task.holders:
@@ -246,11 +240,7 @@ class FakeHarness:
         for name in task.holders:
             holder = self.agents[name]
             holder.task_id = None
-            self.enter(
-                holder,
-                Situation.IDLE,
-                situation_preprompt(holder, self, f"You finished task {task.id}.", Situation.IDLE),
-            )
+            self.enter(holder, Situation.IDLE, f"You finished task {task.id}.")
         self.closed.append(task)
 
     def retire(self, agent: Agent) -> None:

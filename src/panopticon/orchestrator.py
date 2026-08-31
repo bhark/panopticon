@@ -245,10 +245,10 @@ class Orchestrator:
         for subscriber in self.subscribers:
             subscriber(event)
 
-    def enter(self, agent: Agent, situation: Situation, preprompt: str) -> None:
+    def enter(self, agent: Agent, situation: Situation, note: str = "") -> None:
         agent.situation = situation
         agent.wake_at = None
-        transcript.reset(agent, preprompt)
+        transcript.reset(agent, prompts.situation_preprompt(agent, self, note, situation))
         self.emit(Event("situation", f"{agent.name} is now {situation}", agent.name))
 
     async def launch_task(self, task: Task) -> None:
@@ -260,14 +260,9 @@ class Orchestrator:
             self.enter(
                 agent,
                 Situation.ON_TASK,
-                prompts.situation_preprompt(
-                    agent,
-                    self,
-                    f"Task {task.id} ({task.title}) has all its seats filled and has started. "
-                    f"You are working in the git worktree at {path}, alongside "
-                    f"{', '.join(n for n in task.holders if n != name) or 'nobody else'}.",
-                    Situation.ON_TASK,
-                ),
+                f"Task {task.id} ({task.title}) has all its seats filled and has started. "
+                f"You are working in the git worktree at {path}, alongside "
+                f"{', '.join(n for n in task.holders if n != name) or 'nobody else'}.",
             )
         self.emit(Event("task", f"{task.id} started: {task.title}"))
 
@@ -285,25 +280,15 @@ class Orchestrator:
                 self.enter(
                     agent,
                     Situation.JURY,
-                    prompts.situation_preprompt(
-                        agent,
-                        self,
-                        f"{old_id} was restated and is now {submission.id}. You are judging the "
-                        "new statement from scratch.",
-                        Situation.JURY,
-                    ),
+                    f"{old_id} was restated and is now {submission.id}. You are judging the "
+                    "new statement from scratch.",
                 )
             else:
                 agent.submission_id = None
                 self.enter(
                     agent,
                     Situation.IDLE,
-                    prompts.situation_preprompt(
-                        agent,
-                        self,
-                        f"Jury duty on {old_id} ended before you ruled on it: {outcome}.",
-                        Situation.IDLE,
-                    ),
+                    f"Jury duty on {old_id} ended before you ruled on it: {outcome}.",
                 )
 
     async def close_task(self, task: Task) -> None:
@@ -313,13 +298,8 @@ class Orchestrator:
             self.enter(
                 agent,
                 Situation.IDLE,
-                prompts.situation_preprompt(
-                    agent,
-                    self,
-                    f"You finished work on {task.id} ({task.title}). It is sitting in the git "
-                    f"worktree at {task.worktree}. Another agent is integrating it.",
-                    Situation.IDLE,
-                ),
+                f"You finished work on {task.id} ({task.title}). It is sitting in the git "
+                f"worktree at {task.worktree}. Another agent is integrating it.",
             )
         self._spawn_closer(task)
         self.emit(Event("task", f"{task.id} finalized by everyone seated"))
@@ -339,19 +319,14 @@ class Orchestrator:
         self.enter(
             closer,
             Situation.CLOSING_TASK,
-            prompts.situation_preprompt(
-                closer,
-                self,
-                f"You exist to close out task {task.id} ({task.title}): {task.description}\n"
+            f"You exist to close out task {task.id} ({task.title}): {task.description}\n"
                 f"The work sits in the git worktree at {task.worktree}, on its own branch. "
                 f"The agents who did it left these reasons for finalizing:\n{reasons}\n"
                 "Two jobs. First, land it: look at what is actually in that worktree and get it "
                 "onto the main branch. Work that stays in a worktree has not been delivered, so "
                 "discard it only if you find it is wrong or already there, and say why. Second, "
                 "handle the social side: tell whoever needs to know, and put anything the task "
-                "proved into the knowledge base. Then mark yourself done.",
-                Situation.CLOSING_TASK,
-            ),
+            "proved into the knowledge base. Then mark yourself done.",
         )
         self._launch_loop(closer)
 
@@ -394,9 +369,7 @@ class Orchestrator:
                 self.enter(
                     agent,
                     Situation.IDLE,
-                    prompts.situation_preprompt(
-                        agent, self, f"You left {task.id} ({task.title}): {why}.", Situation.IDLE
-                    ),
+                    f"You left {task.id} ({task.title}): {why}.",
                 )
             if notify:
                 self.post(

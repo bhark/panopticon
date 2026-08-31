@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from panopticon.model import ActionResult, ArgSpec, QueueItem, Situation, ToolCtx
-from panopticon.prompts import situation_preprompt
 from panopticon.situations import MARK_DONE, REJOIN, RELIEVE_SELF, VOTE_GOAL_REACHED
 from panopticon.tools import tool
 
@@ -60,13 +59,8 @@ async def rejoin(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     harness.enter(
         agent,
         Situation.IDLE,
-        situation_preprompt(
-            agent,
-            harness,
-            "You had voted the goal reached and were released. You retracted that vote and are "
-            "back in the work.",
-            Situation.IDLE,
-        ),
+        "You had voted the goal reached and were released. You retracted that vote and are "
+        "back in the work.",
     )
     harness.tally_goal()
     return ActionResult(True, "You are back, and your vote is retracted.")

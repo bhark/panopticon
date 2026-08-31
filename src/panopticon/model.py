@@ -243,8 +243,8 @@ class Harness(Protocol):
 
     def emit(self, event: Event) -> None: ...
 
-    def enter(self, agent: Agent, situation: Situation, preprompt: str) -> None:
-        """Move an agent to a new situation, clearing its transcript."""
+    def enter(self, agent: Agent, situation: Situation, note: str = "") -> None:
+        """Move an agent to a new situation, clearing its transcript onto a fresh preprompt."""
         ...
 
     async def launch_task(self, task: Task) -> None:

@@ -13,7 +13,6 @@ from panopticon.model import (
     ToolCtx,
     VerdictCall,
 )
-from panopticon.prompts import situation_preprompt
 from panopticon.situations import CANCEL_JURY, JOIN_JURY, LIST_JURY, SUBMIT_VERDICT
 from panopticon.tools import tool
 
@@ -45,11 +44,7 @@ async def join_jury(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     except ValueError as exc:
         return ActionResult.fail(str(exc))
     agent.submission_id = submission.id
-    harness.enter(
-        agent,
-        Situation.JURY,
-        situation_preprompt(agent, harness, "", Situation.JURY),
-    )
+    harness.enter(agent, Situation.JURY)
     harness.post(
         submission.submitted_by,
         QueueItem("jury", f"{agent.name} joined the jury on your submission {submission.id}."),
@@ -106,12 +101,7 @@ async def submit_verdict(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     harness.enter(
         agent,
         Situation.IDLE,
-        situation_preprompt(
-            agent,
-            harness,
-            f"You judged submission {judged} '{call.value}' and your jury duty ended ({outcome}).",
-            Situation.IDLE,
-        ),
+        f"You judged submission {judged} '{call.value}' and your jury duty ended ({outcome}).",
     )
     return ActionResult(True, f"Verdict recorded on {judged}: {outcome}.")
 
@@ -160,11 +150,5 @@ async def cancel_jury(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     except ValueError as exc:
         return ActionResult.fail(str(exc))
     agent.submission_id = None
-    harness.enter(
-        agent,
-        Situation.IDLE,
-        situation_preprompt(
-            agent, harness, f"You left jury duty on {left} without a verdict.", Situation.IDLE
-        ),
-    )
+    harness.enter(agent, Situation.IDLE, f"You left jury duty on {left} without a verdict.")
     return ActionResult(True, f"You are off the jury for {left}.")
