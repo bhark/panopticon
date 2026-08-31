@@ -66,6 +66,10 @@ class Orchestrator:
         self._pausing = False
         self._last_activity = time.time()
         self._provider_cycle = itertools.cycle(providers)
+        for agent in self.agents.values():
+            # a resume against a config that dropped a provider must not wedge on a KeyError
+            if agent.provider not in providers:
+                agent.situation = Situation.DEAD
 
     # lifecycle
 
@@ -144,12 +148,12 @@ class Orchestrator:
                 response = await self.providers[agent.provider].act(request)
             agent.turns += 1
 
+            transcript.note_usage(agent, response.usage)
             if response.action is None:
                 if self._recover(agent, response.error or "no action"):
                     continue
                 return
             agent.consecutive_failures = 0
-            transcript.note_usage(agent, response.usage)
             transcript.append_action(agent, response.action)
             agent.last_action = response.action.tool
 

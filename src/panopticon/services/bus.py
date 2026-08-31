@@ -44,7 +44,8 @@ class Bus:
         for shout in reversed(self.shouts):
             if shout.at < cutoff:
                 break
-            line = f"{time.strftime('%H:%M', time.localtime(shout.at))} {shout.sender}: {shout.body}"
+            at = time.strftime("%H:%M", time.localtime(shout.at))
+            line = f"{at} {shout.sender}: {shout.body}"
             if used + len(line) > budget:
                 break
             lines.append(line)

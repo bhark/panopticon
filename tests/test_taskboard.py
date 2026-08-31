@@ -166,12 +166,12 @@ def test_nudges_fire_once_per_threshold_then_the_seat_expires():
     assert len(harness.posted) == 1
     assert "15 minutes" in harness.posted[0][1].text
 
-    janitor.tick(now + 31 * 60)
-    janitor.tick(now + 46 * 60)
+    janitor.tick(now + 16 * 60)  # 31 minutes seated
+    janitor.tick(now + 31 * 60)  # 46 minutes seated
     assert len(harness.posted) == 3
     assert harness.board.get(task_id).seat_of("ada").nudges_sent == 3
 
-    janitor.tick(now + 61 * 60)
+    janitor.tick(now + 46 * 60)  # an hour seated
     assert harness.board.get(task_id).seats[0].holder is None
     assert "unassigned" in harness.posted[-1][1].text
     assert harness.events
