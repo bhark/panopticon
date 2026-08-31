@@ -27,9 +27,7 @@ class Worktrees:
         if path.exists():
             return path
         self.root.mkdir(parents=True, exist_ok=True)
-        code, output = await self._git(
-            "worktree", "add", "-b", f"panopticon/{task_id}", str(path)
-        )
+        code, output = await self._git("worktree", "add", "-b", f"panopticon/{task_id}", str(path))
         if code != 0:
             raise RuntimeError(f"could not cut a worktree for {task_id}: {output}")
         return path

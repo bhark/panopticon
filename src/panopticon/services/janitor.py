@@ -22,9 +22,7 @@ class Janitor:
             try:
                 self.tick()
             except Exception as exc:  # upkeep must never take the harness down
-                self.harness.emit(
-                    Event(kind="error", text=f"janitor: {type(exc).__name__}: {exc}")
-                )
+                self.harness.emit(Event(kind="error", text=f"janitor: {type(exc).__name__}: {exc}"))
 
     def tick(self, now: float | None = None) -> None:
         now = now or time.time()

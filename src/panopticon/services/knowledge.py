@@ -64,8 +64,13 @@ class Knowledge:
         return sub
 
     def verdict(
-        self, agent: str, submission_id: str, call: VerdictCall, reasoning: str,
-        restated_title: str = "", restated_body: str = "",
+        self,
+        agent: str,
+        submission_id: str,
+        call: VerdictCall,
+        reasoning: str,
+        restated_title: str = "",
+        restated_body: str = "",
     ) -> tuple[Submission, str]:
         """Returns (submission, outcome) where outcome is accepted|rejected|restated|pending."""
         sub = self._waiting(submission_id)

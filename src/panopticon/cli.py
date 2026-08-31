@@ -172,13 +172,31 @@ async def _interactive(orch: Orchestrator) -> None:
     from panopticon.tui.app import PanopticonApp
 
     app = PanopticonApp(orch)
+    side: set[asyncio.Task] = set()
+
+    def spawn(coro) -> None:
+        task = asyncio.create_task(coro)
+        side.add(task)
+        task.add_done_callback(side.discard)
+
+    async def pause_then_exit() -> None:
+        await orch.pause()
+        app.exit()
+
     app.on_shout = orch.human_shout
-    app.on_pause = lambda: asyncio.create_task(orch.pause())
     app.on_force_end = orch.force_end
+    app.on_pause = lambda: spawn(pause_then_exit())
     orch.subscribers.append(app.on_event)
+
     runner = asyncio.create_task(orch.run())
+
+    async def close_when_done() -> None:
+        await asyncio.gather(runner, return_exceptions=True)
+        app.exit()
+
+    spawn(close_when_done())
     try:
         await app.run_async()
     finally:
         orch.stop("the human closed the interface")
-        await asyncio.gather(runner, return_exceptions=True)
+        await asyncio.gather(runner, *side, return_exceptions=True)

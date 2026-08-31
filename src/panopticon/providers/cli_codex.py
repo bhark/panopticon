@@ -88,7 +88,8 @@ def parse_output(stdout: str, tools: list, *, code: int = 0, stderr: str = "") -
 
 
 def _scan(stdout: str) -> tuple[str, str | None, Usage]:
-    message, error, usage = "", None, Usage()
+    # item-level errors are warnings codex runs on through, so they count only if nothing came back
+    message, hard, soft, usage = "", None, None, Usage()
     for event in _cli.ndjson(stdout):
         kind = event.get("type")
         if kind == "item.completed":
@@ -96,15 +97,15 @@ def _scan(stdout: str) -> tuple[str, str | None, Usage]:
             if item.get("type") == "agent_message":
                 message = str(item.get("text") or "")
             elif item.get("type") == "error":
-                error = error or str(item.get("message") or "")
+                soft = soft or str(item.get("message") or "")
         elif kind == "error":
-            error = str(event.get("message") or "")
+            hard = str(event.get("message") or "")
         elif kind == "turn.failed":
-            error = str((event.get("error") or {}).get("message") or "turn failed")
+            hard = str((event.get("error") or {}).get("message") or "turn failed")
         elif kind == "turn.completed":
             usage = _usage(event.get("usage") or {})
-            error = None
-    return message, error, usage
+            hard = None
+    return message, hard or (soft if not message else None), usage
 
 
 def _usage(u: dict) -> Usage:
