@@ -19,6 +19,7 @@ from textual.binding import Binding, BindingType
 from textual.screen import Screen
 from textual.theme import Theme
 
+from panopticon import update as update_mod
 from panopticon.model import Agent, Event, Harness
 from panopticon.tui.dialogs import ConfirmScreen, HelpScreen, ShoutboxScreen
 from panopticon.tui.format import Coalescer
@@ -68,6 +69,7 @@ class PanopticonApp(App[None]):
         self.events: deque[Event] = deque(maxlen=EVENT_LOG)
         self.paint = Coalescer()
         self.pausing = False
+        self.update_note = update_mod.note()  # cache only; the refresh task sets it again
 
     def get_default_screen(self) -> Screen[None]:
         return OverviewScreen()

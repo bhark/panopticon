@@ -1,4 +1,4 @@
-"""panopticon start | resume | config"""
+"""panopticon start | resume | config | update"""
 
 from __future__ import annotations
 
@@ -7,9 +7,10 @@ import asyncio
 import sys
 from pathlib import Path
 
+from panopticon import __version__, names
 from panopticon import config as config_mod
-from panopticon import names
 from panopticon import store as store_mod
+from panopticon import update as update_mod
 from panopticon.config import Config
 from panopticon.model import Agent, Level, Situation
 from panopticon.orchestrator import Orchestrator
@@ -22,7 +23,10 @@ MIN_AGENTS = 3  # a truth needs two 'true' verdicts and cannot be judged by its 
 
 
 def main(argv: list[str] | None = None) -> int:
+    # child processes write to this same fd, so our own lines must not sit in a block buffer
+    sys.stdout.reconfigure(line_buffering=True)
     parser = argparse.ArgumentParser(prog="panopticon")
+    parser.add_argument("--version", action="version", version=__version__)
     sub = parser.add_subparsers(dest="command")
 
     start = sub.add_parser("start", help="open a panopticon in this directory")
@@ -42,14 +46,42 @@ def main(argv: list[str] | None = None) -> int:
     cfg.add_argument("--connect-provider", metavar="NAME")
     cfg.add_argument("--disconnect-provider", metavar="NAME")
 
+    sub.add_parser("update", help="install the latest panopticon")
+
     args = parser.parse_args(argv)
     match args.command:
+        case "update":
+            return _update()
         case "config":
-            return _config(args)
+            return _nudge(_config(args))
         case "resume":
             return _resume(args)
         case _:
             return _start(args)
+
+
+def _nudge(code: int) -> int:
+    """A command that never opens the interface says it in a line instead."""
+    if note := update_mod.note():
+        print(note, file=sys.stderr)
+    return code
+
+
+def _update() -> int:
+    print(f"panopticon {__version__}, looking for a newer one...")
+    try:
+        tag = update_mod.latest()
+        update_mod.remember(tag)
+        if not update_mod.behind(tag):
+            print("already the latest release")
+            return 0
+        print(f"installing {tag.removeprefix('v')}...")
+        update_mod.install(tag)
+    except update_mod.UpdateError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    print(f"panopticon {tag.removeprefix('v')} installed")
+    return 0
 
 
 def _config(args: argparse.Namespace) -> int:
@@ -197,11 +229,21 @@ def _resume(args: argparse.Namespace) -> int:
 def _run(orch: Orchestrator, headless: bool) -> int:
     asyncio.run(_headless(orch) if headless else _interactive(orch))
     print(orch.stopped_because or "closed")
-    return 0
+    return _nudge(0) if headless else 0
 
 
 async def _headless(orch: Orchestrator) -> None:
-    await orch.run()
+    check = asyncio.create_task(update_mod.refresh())
+    try:
+        await orch.run()
+    finally:
+        await _drop(check)
+
+
+async def _drop(task: asyncio.Task) -> None:
+    """The update check must never hold the exit open."""
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
 
 
 async def _interactive(orch: Orchestrator) -> None:
@@ -225,6 +267,13 @@ async def _interactive(orch: Orchestrator) -> None:
     app.on_pause = lambda: spawn(pause_then_exit())
     orch.subscribers.append(app.harness_event)
 
+    async def check_for_update() -> None:
+        """Beside the harness, never before it - the interface opens on the cached answer."""
+        await update_mod.refresh()
+        app.update_note = update_mod.note()
+        app.paint.note()
+
+    check = asyncio.create_task(check_for_update())
     runner = asyncio.create_task(orch.run())
 
     async def close_when_done() -> None:
@@ -236,4 +285,5 @@ async def _interactive(orch: Orchestrator) -> None:
         await app.run_async()
     finally:
         orch.stop("the human closed the interface")
+        await _drop(check)
         await asyncio.gather(runner, *side, return_exceptions=True)

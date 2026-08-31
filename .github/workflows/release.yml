@@ -1,0 +1,39 @@
+name: release
+on:
+  push:
+    tags: ['v*.*.*']
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # hatch-vcs takes the version from the tag, so a shallow clone would build 0.1.dev0
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # setup-uv stopped publishing moving major tags after v7 - pin exact
+      - uses: astral-sh/setup-uv@v10.0.1
+
+      - run: uv sync --locked
+
+      - run: uv run ruff check . && uv run ruff format --check .
+
+      - run: uv run pytest
+
+      - run: uv build --wheel
+
+      - name: the wheel must carry the tag's version
+        run: |
+          want="${GITHUB_REF_NAME#v}"
+          test -f "dist/panopticon-${want}-py3-none-any.whl" || {
+            echo "expected panopticon-${want}-py3-none-any.whl, built:" >&2
+            ls dist >&2
+            exit 1
+          }
+
+      - run: gh release create "$GITHUB_REF_NAME" dist/*.whl --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

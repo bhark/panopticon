@@ -66,7 +66,7 @@ class OverviewScreen(LiveScreen):
         agents = sorted(harness.agents.values(), key=lambda a: (not a.alive, a.name))
 
         self.query_one("#goalbar", Static).update(
-            goal_bar(harness.goal, app.started_at, agents, app.banner())
+            goal_bar(harness.goal, app.started_at, agents, app.banner(), app.update_note)
         )
         repaint_table(
             self.query_one("#agents", DataTable),

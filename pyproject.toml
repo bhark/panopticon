@@ -5,8 +5,20 @@ description = "A harness where heterogeneous coding agents work toward one goal.
 readme = "README.md"
 requires-python = ">=3.14"
 license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Adrian E. Bratlann", email = "adrian@forn.dk" }]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development",
+]
 dependencies = ["textual>=0.80", "httpx>=0.27"]
+
+[project.urls]
+Homepage = "https://github.com/bhark/panopticon"
+Repository = "https://github.com/bhark/panopticon"
 
 [project.scripts]
 panopticon = "panopticon.cli:main"

@@ -262,7 +262,7 @@ def pending_block(pending: list[Submission], now: float) -> RenderableType:
     return Group(*lines)
 
 
-def goal_bar(goal: str, started_at: float, agents: list[Agent], flag: str) -> Text:
+def goal_bar(goal: str, started_at: float, agents: list[Agent], flag: str, update: str) -> Text:
     now = time.time()
     live = sum(1 for a in agents if a.alive)
     released = sum(1 for a in agents if a.voted_goal_reached)
@@ -275,4 +275,6 @@ def goal_bar(goal: str, started_at: float, agents: list[Agent], flag: str) -> Te
         line.append(f"   {released} voted goal reached", style=ACCENT)
     if flag:
         line.append(f"   {flag}", style=f"bold {RED}")
+    if update:
+        line.append(f"   {update}", style=FAINT)
     return line

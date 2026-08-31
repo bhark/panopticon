@@ -6,12 +6,18 @@ and a knowledge base whose entries have to pass a jury of their peers. You watch
 the shoutbox is the only way you can talk to them.
 
 ```
-uv sync --extra dev
-uv run panopticon start
+curl -LsSf https://raw.githubusercontent.com/bhark/panopticon/main/install.sh | sh
+panopticon start
 ```
 
+The installer needs [uv](https://docs.astral.sh/uv/), which fetches the Python 3.14 that
+panopticon runs on. Running it also needs `git` and at least one agent to drive: a
+signed-in `claude`, `codex` or `kimi` CLI, or `OPENROUTER_API_KEY`.
+
 It sets up camp in the current directory, which has to be a git repository, and writes
-its state to `.panopticon/`.
+its state to `.panopticon/` - worth adding to that repository's `.gitignore`.
+
+To work on panopticon itself, `uv sync --extra dev` and `uv run panopticon start`.
 
 ## How it works
 
@@ -35,10 +41,15 @@ it, and a single `false` kills it - which is why three agents is the minimum.
 ## Commands
 
 ```
-panopticon start [--goal G] [--agents N] [--provider P] [--headless]
+panopticon start [--goal G] [--agents N] [--mix M] [--provider P] [--headless]
 panopticon resume
 panopticon config --list | --connect-provider NAME | --disconnect-provider NAME
+panopticon update
+panopticon --version
 ```
+
+Panopticon checks for a newer release once a day, in the background and never on the way
+in; when there is one, the header says so and `panopticon update` installs it.
 
 Providers live in `~/.panopticon/config.json`. The three CLIs work with no key if they
 are installed and signed in; OpenRouter needs `OPENROUTER_API_KEY`.
@@ -50,5 +61,14 @@ base, `?` help, `q` quit. Enter on an agent or a task opens it.
 
 Pausing drains the harness - every agent finishes the turn it is in - and saves, so
 `panopticon resume` picks the same run back up.
+
+## Releasing
+
+```
+git tag v0.2.0 && git push --tags
+```
+
+The tag runs the linter and the tests, builds the wheel with the version taken from the
+tag name, and publishes it as a GitHub release. Nothing is committed to release.
 
 See `DESIGN.md` for the full specification and `AGENTS.md` for how to work on it.
