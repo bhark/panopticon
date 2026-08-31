@@ -10,7 +10,9 @@ from panopticon.model import ActionResult, ArgSpec, Situation, ToolCtx
 from panopticon.situations import WAIT
 from panopticon.tools import tool
 
-ON_TASK_CAP_MINUTES = 5
+CAP_MINUTES = 5
+# situations where the agent has a job in front of it and nothing is bound to ever wake it
+_HOLDING_WORK = (Situation.ON_TASK, Situation.CLOSING_TASK, Situation.JURY)
 
 
 @tool(
@@ -28,13 +30,12 @@ ON_TASK_CAP_MINUTES = 5
 async def wait(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     minutes = args.get("minutes")
     if minutes is None:
-        if ctx.agent.situation is Situation.ON_TASK:
-            # a task does not move while its holder sleeps, and nothing is bound to wake them
-            ctx.agent.wake_at = time.time() + ON_TASK_CAP_MINUTES * 60
+        if ctx.agent.situation in _HOLDING_WORK:
+            ctx.agent.wake_at = time.time() + CAP_MINUTES * 60
             return ActionResult(
                 True,
-                f"Waiting up to {ON_TASK_CAP_MINUTES}m. You are holding a seat on a task and it "
-                "does not move while you wait, so do the work or leave the seat.",
+                f"Waiting up to {CAP_MINUTES}m. You are holding work that does not move while "
+                "you wait, and nothing else will finish it, so get on with it or hand it back.",
             )
         # inf, not None: None means "not waiting", and the loop would take another turn at once
         ctx.agent.wake_at = math.inf

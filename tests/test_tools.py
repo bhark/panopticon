@@ -417,6 +417,9 @@ async def test_waiting_forever_is_capped_while_you_hold_a_task_seat(tmp_path):
     assert (await run(h, "Ada", WAIT)).ok
     assert idle.wake_at == math.inf
 
-    result = await run(h, "Bo", WAIT)
-    assert result.ok and "leave the seat" in result.text
-    assert seated.wake_at is not None and seated.wake_at != math.inf
+    for situation in (Situation.ON_TASK, Situation.CLOSING_TASK, Situation.JURY):
+        seated.situation = situation
+        seated.wake_at = None
+        result = await run(h, "Bo", WAIT)
+        assert result.ok and "hand it back" in result.text
+        assert seated.wake_at is not None and seated.wake_at != math.inf
