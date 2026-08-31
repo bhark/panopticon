@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from panopticon.model import ActionResult, ArgSpec, QueueItem, Situation, ToolCtx
-from panopticon.prompts import situation_preprompt
 from panopticon.situations import (
     ASSIGN_SELF,
     CANCEL_FINALIZE,

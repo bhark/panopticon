@@ -70,6 +70,7 @@ async def rejoin(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
             Situation.IDLE,
         ),
     )
+    harness.tally_goal()
     return ActionResult(True, "You are back, and your vote is retracted.")
 
 

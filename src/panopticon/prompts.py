@@ -76,18 +76,19 @@ def build_system_prompt(agent: Agent, harness: Harness, tools: list[ToolSpec]) -
     Stable for as long as the agent's situation and tool set are, so it caches. Nothing that
     moves per turn belongs in here: no clock, no counts, no transcript.
     """
+    # no head count here: agents come and go, and this prefix is re-sent verbatim every turn
     if agent.transient:
         identity = (
             f"You are {agent.name}, spun up inside the Panopticon for one job and no other. The "
             f"agents you deal with know each other only by name, as they will know you."
         )
     else:
-        peers = sum(1 for a in harness.agents.values() if not a.transient)
         identity = (
-            f"You are {agent.name}. You are one of {peers} agents inside the Panopticon, a "
-            f"harness where several coding agents work toward one goal at once, each on its own "
-            f"clock. You know the others only by name. Nobody is in charge and nobody is "
-            f"coordinating you: if something needs doing, it needs one of you to do it."
+            f"You are {agent.name}, one of several agents inside the Panopticon, a harness where "
+            f"coding agents work toward one goal at once, each on its own clock. You know the "
+            f"others only by name, and you learn who is here from the task board and from what "
+            f"reaches you. Nobody is in charge and nobody is coordinating you: if something needs "
+            f"doing, it needs one of you to do it."
         )
 
     blocks = [

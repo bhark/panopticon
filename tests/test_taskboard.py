@@ -152,7 +152,9 @@ class FakeHarness:
             agent.task_id = None
             agent.situation = Situation.IDLE
         if notify:
-            self.post(name, QueueItem(kind="task", text=f"You have been unassigned from {task.id}: {why}"))
+            self.post(
+                name, QueueItem(kind="task", text=f"You have been unassigned from {task.id}: {why}")
+            )
         self.events.append(Event(kind="seat", text=f"{name} left {task.id}: {why}", agent=name))
 
 
