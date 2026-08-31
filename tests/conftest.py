@@ -20,9 +20,7 @@ def make_git_repo(path: Path) -> Path:
         subprocess.run(argv, cwd=path, check=True, capture_output=True)
     (path / "README.md").write_text("seed\n")
     subprocess.run(["git", "add", "README.md"], cwd=path, check=True, capture_output=True)
-    subprocess.run(
-        ["git", "commit", "-q", "-m", "seed"], cwd=path, check=True, capture_output=True
-    )
+    subprocess.run(["git", "commit", "-q", "-m", "seed"], cwd=path, check=True, capture_output=True)
     return path
 
 

@@ -138,4 +138,3 @@ def restore_submission(data: dict[str, Any]) -> Submission:
     submission = load(Submission, data)
     submission.verdicts = verdicts
     return submission
-

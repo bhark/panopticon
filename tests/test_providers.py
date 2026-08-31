@@ -210,9 +210,7 @@ class TestCodexCLI:
 
     def test_the_invocation_passes_the_prompt_as_argv_and_prepends_the_system_prompt(self):
         """There is no --append-system-prompt, and a piped stdin arrives as a <stdin> block."""
-        argv = cli_codex.CodexCLI(model="gpt-5.1")._argv(
-            "SYS\n\nUSER", "/tmp", "/tmp/s.json"
-        )
+        argv = cli_codex.CodexCLI(model="gpt-5.1")._argv("SYS\n\nUSER", "/tmp", "/tmp/s.json")
         assert argv[-1] == "SYS\n\nUSER"
         assert argv[argv.index("-C") + 1] == "/tmp"
         assert argv[argv.index("--output-schema") + 1] == "/tmp/s.json"

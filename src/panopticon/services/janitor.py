@@ -30,8 +30,9 @@ class Janitor:
             holder = self.harness.agents.get(seat.holder or "")
             if holder is None or not holder.alive:
                 # the harness settles the agent and everyone left on the task; the board cannot
-                self.harness.leave_task(seat.holder or "", task, "the agent holding it is gone",
-                                        notify=False)
+                self.harness.leave_task(
+                    seat.holder or "", task, "the agent holding it is gone", notify=False
+                )
 
         for task, seat, minutes in board.waiting_seats(now):
             if minutes >= EXPIRE_MINUTES:

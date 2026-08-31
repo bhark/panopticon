@@ -320,12 +320,12 @@ class Orchestrator:
             closer,
             Situation.CLOSING_TASK,
             f"You exist to close out task {task.id} ({task.title}): {task.description}\n"
-                f"The work sits in the git worktree at {task.worktree}, on its own branch. "
-                f"The agents who did it left these reasons for finalizing:\n{reasons}\n"
-                "Two jobs. First, land it: look at what is actually in that worktree and get it "
-                "onto the main branch. Work that stays in a worktree has not been delivered, so "
-                "discard it only if you find it is wrong or already there, and say why. Second, "
-                "handle the social side: tell whoever needs to know, and put anything the task "
+            f"The work sits in the git worktree at {task.worktree}, on its own branch. "
+            f"The agents who did it left these reasons for finalizing:\n{reasons}\n"
+            "Two jobs. First, land it: look at what is actually in that worktree and get it "
+            "onto the main branch. Work that stays in a worktree has not been delivered, so "
+            "discard it only if you find it is wrong or already there, and say why. Second, "
+            "handle the social side: tell whoever needs to know, and put anything the task "
             "proved into the knowledge base. Then mark yourself done.",
         )
         self._launch_loop(closer)
