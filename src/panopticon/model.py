@@ -241,7 +241,21 @@ class Harness(Protocol):
         """Move an agent to a new situation, clearing its transcript."""
         ...
 
-    def spawn_closer(self, task: Task) -> None: ...
+    async def launch_task(self, task: Task) -> None:
+        """All seats filled: cut the worktree and put every holder on the task."""
+        ...
+
+    async def close_task(self, task: Task) -> None:
+        """All holders agreed to finalize: release them and spin up the closer."""
+        ...
+
+    def retire(self, agent: Agent) -> None:
+        """End an agent's loop: a transient closer that is done, or a relieved agent."""
+        ...
+
+    def tally_goal(self) -> None:
+        """Recount goal-reached votes and end the session if they are unanimous."""
+        ...
 
 
 Handler = Callable[["ToolCtx", dict[str, Any]], Awaitable[ActionResult]]
