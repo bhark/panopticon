@@ -129,6 +129,12 @@ def situation_preprompt(agent: Agent, harness: Harness, note: str, dest: Situati
         return _on_jury(agent, harness, note)
     if dest is Situation.CLOSING_TASK:
         return _closing(agent, harness, note)
+    if dest is Situation.RELEASED:
+        return _join(
+            f"You voted the goal reached and are released from the work. Your reason: {note}",
+            "This context is fresh; the work you did is no longer in it. You can still be "
+            "messaged, and you can rejoin if you learn the goal is not reached after all.",
+        )
     return _join(note, "You are back in the main loop with a clean context and nothing assigned.")
 
 

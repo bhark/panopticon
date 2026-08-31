@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import itertools
 import math
+import random
 import time
+from collections import Counter
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from panopticon import prompts, transcript
@@ -14,6 +18,7 @@ from panopticon import store as store_mod
 from panopticon.config import Config
 from panopticon.model import (
     Agent,
+    Entry,
     Event,
     Level,
     QueueItem,
@@ -23,7 +28,14 @@ from panopticon.model import (
     ToolCtx,
 )
 from panopticon.names import generate
-from panopticon.providers.base import Provider, TurnRequest
+from panopticon.providers.base import (
+    Fault,
+    Provider,
+    TurnRequest,
+    TurnResponse,
+    classify,
+    is_overflow,
+)
 from panopticon.services.bus import Bus
 from panopticon.services.janitor import Janitor
 from panopticon.services.knowledge import Knowledge
@@ -35,6 +47,24 @@ from panopticon.tools import dispatch, tools_for
 MAX_CONSECUTIVE_FAILURES = 4
 AUTOSAVE_SECONDS = 30
 IDLE_POKE_SECONDS = 900
+
+# a provider is cooled after this many failures in a row, counted across every agent on it
+PROVIDER_STRIKES = 3
+TRANSIENT_COOLDOWN = 60
+EXHAUSTED_COOLDOWN = 900
+# a parked agent re-checks this often, so a pause never waits out a long cooldown
+MAX_HOLD_SECONDS = 60
+
+
+@dataclass(slots=True)
+class Health:
+    """One provider's standing. Shared by every agent on it: an outage is discovered once."""
+
+    failures: int = 0
+    cooling_until: float = 0.0
+
+    def cooling(self, now: float) -> bool:
+        return self.cooling_until > now
 
 
 class Orchestrator:
@@ -55,6 +85,7 @@ class Orchestrator:
         self.agents: dict[str, Agent] = {a.name: a for a in agents}
         self.providers = providers
         self.store = store
+        self.store.prepare()
         self.worktrees = worktrees
         self.config = config
         self.started_at = started_at or time.time()
@@ -66,6 +97,7 @@ class Orchestrator:
         self.stopped_because = ""
         self.subscribers: list[Callable[[Event], None]] = []
         self._sem = {k: asyncio.Semaphore(config.max_concurrent_turns) for k in providers}
+        self.health = {k: Health() for k in providers}
         self._loops: dict[str, asyncio.Task] = {}
         self._stop = asyncio.Event()
         self._pausing = False
@@ -79,7 +111,6 @@ class Orchestrator:
     # lifecycle
 
     async def run(self) -> None:
-        self.store.prepare()
         self.emit(Event("session", f"panopticon opened: {self.goal}"))
         # a resumed session may already be settled; do not spend a turn discovering that
         self.tally_goal()
@@ -136,23 +167,29 @@ class Orchestrator:
     # the turn loop
 
     async def _loop(self, agent: Agent) -> None:
+        overflowed = False
         while agent.alive and not self._pausing and not self._stop.is_set():
             await asyncio.sleep(
                 0
             )  # a provider that answers without awaiting must not starve the loop
+            if not await self._ready(agent):
+                continue
             items = await self._collect(agent)
             if self._pausing or self._stop.is_set():
                 return
             if items:
                 transcript.append_inbox(agent, items)
-            await self._maybe_compact(agent)
+                self._record(agent, agent.entries[-len(items) :])
 
             tools = tools_for(agent, self)
             if not tools:
                 return
+            transcript.trim_cold(agent)
+            system = prompts.build_system_prompt(agent, self, tools)
+            await self._maybe_compact(agent, system)
             request = TurnRequest(
                 agent=agent.name,
-                system=prompts.build_system_prompt(agent, self, tools),
+                system=system,
                 prompt=transcript.render(agent),
                 tools=tools,
                 cwd=self._cwd_for(agent),
@@ -160,18 +197,28 @@ class Orchestrator:
             async with self._sem[agent.provider]:
                 response = await self._engine(agent).act(request)
             agent.turns += 1
+            agent.last_turn_at = time.time()
 
             transcript.note_usage(agent, response.usage)
             if response.action is None:
-                if self._recover(agent, response.error or "no action"):
+                # our estimate is a guess wherever usage goes unreported; the provider knows
+                if not overflowed and is_overflow(response.error or ""):
+                    overflowed = True
+                    await self._maybe_compact(agent, system, force=True)
+                    continue
+                if await self._recover(agent, response):
                     continue
                 return
+            overflowed = False
             agent.consecutive_failures = 0
+            self.health[agent.provider].failures = 0
             transcript.append_action(agent, response.action)
             agent.last_action = response.action.tool
+            self._record(agent, agent.entries[-1:])
 
             result = await dispatch(ToolCtx(agent, self), response.action, [t.name for t in tools])
-            transcript.append_result(agent, result.text)
+            transcript.append_result(agent, result.text, response.action.tool)
+            self._record(agent, agent.entries[-1:])
             self._last_activity = time.time()
             self.emit(Event("action", f"{response.action.tool}: {result.text[:120]}", agent.name))
 
@@ -196,31 +243,100 @@ class Orchestrator:
         agent.wake_at = None
         return items
 
-    def _recover(self, agent: Agent, error: str) -> bool:
-        """A provider failure. Returns True if the agent should try again."""
-        agent.consecutive_failures += 1
-        self.emit(Event("error", f"turn failed: {error}", agent.name))
-        if agent.consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-            agent.situation = Situation.DEAD
-            self.emit(Event("agent", f"{agent.name} died after {error}", agent.name))
-            self._release_seats_of(agent)
-            self.tally_goal()
-            return False
-        agent.inbox.append(
-            QueueItem("system", f"Your last turn did not produce a usable action: {error}")
-        )
+    async def _recover(self, agent: Agent, response: TurnResponse) -> bool:
+        """A turn produced no action. Returns True if the agent should try again."""
+        error = response.error or "no action"
+        fault = classify(response)
+        self.emit(Event("error", f"turn failed ({fault}): {error}", agent.name))
+        if fault is Fault.MALFORMED:
+            agent.consecutive_failures += 1
+            if agent.consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                agent.situation = Situation.DEAD
+                self.emit(Event("agent", f"{agent.name} died after {error}", agent.name))
+                self._release_seats_of(agent)
+                self.tally_goal()
+                return False
+            agent.inbox.append(
+                QueueItem("system", f"Your last turn did not produce a usable action: {error}")
+            )
+            return True
+
+        # the provider's fault, not the agent's: it is told nothing and keeps its lives
+        health = self.health[agent.provider]
+        health.failures += 1
+        if fault is Fault.EXHAUSTED or health.failures >= PROVIDER_STRIKES:
+            cooldown = EXHAUSTED_COOLDOWN if fault is Fault.EXHAUSTED else TRANSIENT_COOLDOWN
+            health.cooling_until = time.time() + cooldown
+            self.emit(Event("provider", f"{agent.provider} is out for {cooldown:.0f}s: {error}"))
+        else:
+            await self._hold(min(2**health.failures + random.random(), MAX_HOLD_SECONDS))
         return True
+
+    async def _ready(self, agent: Agent) -> bool:
+        """False when the agent could not take a turn now, having rehomed or waited instead."""
+        now = time.time()
+        if not self.health[agent.provider].cooling(now):
+            return True
+        if self._rehome(agent):
+            return True
+        left = min(h.cooling_until for h in self.health.values()) - now
+        await self._hold(min(max(left, 1.0), MAX_HOLD_SECONDS))
+        return False
+
+    def _rehome(self, agent: Agent) -> bool:
+        """Move an agent onto a provider that is up. The transcript is plain text; it travels.
+
+        Its level goes with it, and so does everything else: name, seat, jury duty, vote. The
+        one cost is a cache write, which the failure that brought us here already forced.
+        """
+        now = time.time()
+        open_to = [k for k, h in self.health.items() if not h.cooling(now)]
+        if not open_to:
+            return False
+        load = Counter(a.provider for a in self.agents.values() if a.alive)
+        was, agent.provider = agent.provider, min(open_to, key=lambda k: load[k])
+        agent.inbox.append(
+            QueueItem(
+                "system",
+                "The model you were running on went down. You are on another one now. Nothing "
+                "you did is lost and your work is unchanged.",
+            )
+        )
+        self.emit(Event("agent", f"{agent.name} moved from {was} to {agent.provider}", agent.name))
+        return True
+
+    async def _hold(self, seconds: float) -> None:
+        """Sleep, but wake the moment the session ends, so a shutdown never waits one out."""
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(self._stop.wait(), seconds)
 
     def _engine(self, agent: Agent) -> Provider:
         return self.providers[agent.provider][agent.level]
 
-    async def _maybe_compact(self, agent: Agent) -> None:
-        provider = self._engine(agent)
-        if not transcript.needs_compaction(agent, provider):
+    def _record(self, agent: Agent, entries: list[Entry]) -> None:
+        for entry in entries:
+            self.store.append_entry(agent.name, entry)
+
+    async def _maybe_compact(self, agent: Agent, system: str, force: bool = False) -> None:
+        engine = self._engine(agent)
+        if not force and not transcript.needs_compaction(agent, engine, system):
             return
-        system = prompts.build_system_prompt(agent, self, tools_for(agent, self))
-        if await transcript.compact(agent, provider, system):
-            self.emit(Event("compaction", "context compacted", agent.name))
+        now = time.time()
+        # a summary is one shot with its own system text, so any provider that is up can write it
+        fallbacks = tuple(
+            levels[agent.level]
+            for key, levels in self.providers.items()
+            if key != agent.provider and not self.health[key].cooling(now)
+        )
+        how = await transcript.compact(
+            agent,
+            engine,
+            system,
+            fallbacks=fallbacks,
+            log_path=str(self.store.transcript_path(agent.name)),
+        )
+        if how:
+            self.emit(Event("compaction", f"context {how}", agent.name))
 
     def _cwd_for(self, agent: Agent) -> str | None:
         # an agent may merge and remove its own worktree; it must not die for that
@@ -253,6 +369,7 @@ class Orchestrator:
         agent.situation = situation
         agent.wake_at = None
         transcript.reset(agent, prompts.situation_preprompt(agent, self, note, situation))
+        self._record(agent, agent.entries)
         self.emit(Event("situation", f"{agent.name} is now {situation}", agent.name))
 
     async def launch_task(self, task: Task) -> None:
@@ -421,11 +538,18 @@ class Orchestrator:
     # background
 
     def _shout_flushed(self, senders: list[str]) -> None:
-        names = ", ".join(dict.fromkeys(senders))
-        self.broadcast(
-            QueueItem("shout", f"{names} wrote to the shoutboard. View it if you're interested.")
-        )
-        self.emit(Event("shout", f"shoutboard: {names}"))
+        unique = list(dict.fromkeys(senders))
+        for name in self.agents:
+            if others := [s for s in unique if s != name]:
+                self.post(
+                    name,
+                    QueueItem(
+                        "shout",
+                        f"{', '.join(others)} wrote to the shoutboard. "
+                        f"View it if you're interested.",
+                    ),
+                )
+        self.emit(Event("shout", f"shoutboard: {', '.join(unique)}"))
 
     def human_shout(self, body: str) -> None:
         self.bus.shout(self.HUMAN, body)
@@ -461,8 +585,9 @@ class Orchestrator:
             )
 
     def context_window(self, agent: Agent) -> int:
+        """The window the agent is actually held to, which is where compaction fires."""
         found = self.providers.get(agent.provider, {}).get(agent.level)
-        return found.context_window if found else 0
+        return transcript.usable_window(found) if found else 0
 
     def save(self) -> None:
         self.store.save(store_mod.snapshot(self))

@@ -15,6 +15,7 @@ from panopticon.model import (
     ToolCtx,
 )
 from panopticon.tools.registry import tool
+from panopticon.transcript import dedupe_result
 
 VIEW_BOARD = "view_task_board"
 CREATE_TASK = "create_task"
@@ -56,7 +57,8 @@ def _tell_mates(ctx: ToolCtx, task: Task, text: str) -> None:
     situations=_BOARD_READERS,
 )
 async def view_task_board(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
-    return ActionResult(True, f"{ctx.harness.board.render()}\n\n{_roster(ctx.harness)}")
+    board = f"{ctx.harness.board.render()}\n\n{_roster(ctx.harness)}"
+    return ActionResult(True, dedupe_result(ctx.agent, VIEW_BOARD, board))
 
 
 @tool(

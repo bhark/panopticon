@@ -12,6 +12,7 @@ from panopticon.model import Shout
 
 class Bus:
     DEBOUNCE_SECONDS = 180
+    MAX_BATCH_SECONDS = 600
     MAX_AGE_SECONDS = 3600
     MAX_TOKENS = 10_000
 
@@ -60,9 +61,11 @@ class Bus:
         while True:
             await self._shouted.wait()
             self._shouted.clear()
-            while True:
+            # a harness shouting faster than the window would extend it forever, so it also caps
+            deadline = time.time() + self.MAX_BATCH_SECONDS
+            while (quiet := min(self.DEBOUNCE_SECONDS, deadline - time.time())) > 0:
                 try:
-                    await asyncio.wait_for(self._shouted.wait(), self.DEBOUNCE_SECONDS)
+                    await asyncio.wait_for(self._shouted.wait(), quiet)
                 except TimeoutError:
                     break
                 self._shouted.clear()  # another shout, so the window starts over

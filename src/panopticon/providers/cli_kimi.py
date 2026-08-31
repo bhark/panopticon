@@ -13,7 +13,7 @@ the transcript's character estimate as the only context figure for this provider
 from __future__ import annotations
 
 from panopticon.providers import _cli
-from panopticon.providers.base import TurnRequest, TurnResponse, parse_action
+from panopticon.providers.base import Fault, TurnRequest, TurnResponse, parse_action
 
 SHAPE = (
     'Reply with only a JSON object of the form {"tool": "<tool name>", "args": {...}, '
@@ -67,7 +67,11 @@ def parse_output(stdout: str, tools: list, *, code: int = 0, stderr: str = "") -
             error=_cli.because(f"kimi exited {code} with no assistant message", stderr or stdout)
         )
     action, error = parse_action(message, tools)
-    return TurnResponse(action=action, error=error and _cli.because(error, message))
+    return TurnResponse(
+        action=action,
+        error=error and _cli.because(error, message),
+        fault=Fault.MALFORMED if error else None,
+    )
 
 
 def assistant_text(stdout: str) -> str:

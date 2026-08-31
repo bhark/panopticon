@@ -14,7 +14,13 @@ import tempfile
 
 from panopticon.model import Usage
 from panopticon.providers import _cli
-from panopticon.providers.base import TurnRequest, TurnResponse, parse_action, strict_action_schema
+from panopticon.providers.base import (
+    Fault,
+    TurnRequest,
+    TurnResponse,
+    parse_action,
+    strict_action_schema,
+)
 
 
 class CodexCLI:
@@ -89,7 +95,10 @@ def parse_output(stdout: str, tools: list, *, code: int = 0, stderr: str = "") -
         )
     action, parse_error = parse_action(message, tools)
     return TurnResponse(
-        action=action, usage=usage, error=parse_error and _cli.because(parse_error, message)
+        action=action,
+        usage=usage,
+        error=parse_error and _cli.because(parse_error, message),
+        fault=Fault.MALFORMED if parse_error else None,
     )
 
 

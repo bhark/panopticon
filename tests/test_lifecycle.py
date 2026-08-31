@@ -9,15 +9,17 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+import time
 from pathlib import Path
 
 import pytest
 
+from panopticon import transcript as tx
 from panopticon.cli import rebuild
 from panopticon.config import Config
 from panopticon.model import Action, Agent, Level, QueueItem, Situation
 from panopticon.orchestrator import Orchestrator
-from panopticon.providers.base import TurnRequest
+from panopticon.providers.base import TurnRequest, TurnResponse
 from panopticon.providers.mock import MockProvider
 from panopticon.services.taskboard import TaskBoard
 from panopticon.services.worktrees import Worktrees
@@ -285,3 +287,116 @@ async def test_a_run_paused_mid_task_resumes_and_finishes_the_job(tmp_path):
     assert second.board.archive()
     # it carried on rather than starting over
     assert any(second.agents[n].turns > t for n, t in turns_before.items())
+
+
+class Down:
+    """A provider that only ever fails, so a test can watch the harness react to one."""
+
+    context_window = 200_000
+
+    def __init__(self, error: str) -> None:
+        self.error = error
+
+    async def act(self, req: TurnRequest) -> TurnResponse:
+        return TurnResponse(error=self.error)
+
+    async def summarize(self, system: str, text: str) -> str | None:
+        return None
+
+
+OUT_OF_QUOTA = "openrouter 429: {'error': 'Monthly usage limit reached'}"
+
+
+def harness(tmp_path: Path, providers: dict, seating: dict[str, str]) -> Orchestrator:
+    repo = make_git_repo(tmp_path / "repo")
+    store = Store(repo / STATE_DIRNAME)
+    return Orchestrator(
+        goal=GOAL,
+        agents=[Agent(name=n, provider=p) for n, p in seating.items()],
+        providers=providers,
+        store=store,
+        worktrees=Worktrees(repo, store.worktrees),
+        config=Config(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_agent_moves_to_a_provider_that_is_up_when_its_own_runs_out(tmp_path):
+    """Losing a provider used to cost the agent: four failures and it was dead, seats and all."""
+    orch = harness(
+        tmp_path,
+        {
+            "out": dict.fromkeys(Level, Down(OUT_OF_QUOTA)),
+            "up": engines(MockProvider(lambda req: Action("wait", {}))),
+        },
+        {"Ada": "out", "Bo": "up", "Cy": "up"},
+    )
+    ada = orch.agents["Ada"]
+    run = asyncio.create_task(orch.run())
+    await until(lambda: ada.provider == "up")
+
+    assert ada.alive and ada.situation is not Situation.DEAD
+    assert ada.consecutive_failures == 0, "the provider failed, not the agent"
+    assert orch.health["out"].cooling(time.time())
+    orch.stop("done")
+    await asyncio.wait_for(run, 5)
+
+
+@pytest.mark.asyncio
+async def test_an_agent_that_moves_keeps_its_seat_and_its_transcript(tmp_path):
+    orch = harness(
+        tmp_path,
+        {
+            "out": dict.fromkeys(Level, Down(OUT_OF_QUOTA)),
+            "up": engines(MockProvider(lambda req: Action("wait", {}))),
+        },
+        {"Ada": "out", "Bo": "up", "Cy": "up"},
+    )
+    ada = orch.agents["Ada"]
+    task = orch.board.create("Bo", "t", "d", ["solo"])
+    orch.board.assign("Ada", task.id, "solo")
+    ada.situation = Situation.WAITING_FOR_SEATS
+    before = tx.render(ada)
+
+    run = asyncio.create_task(orch.run())
+    await until(lambda: ada.provider == "up")
+
+    assert orch.board.task_of("Ada") is task
+    assert tx.render(ada).startswith(before.removesuffix(tx.TAIL).rstrip("\n"))
+    orch.stop("done")
+    await asyncio.wait_for(run, 5)
+
+
+@pytest.mark.asyncio
+async def test_agents_park_and_the_harness_stays_up_when_every_provider_is_out(tmp_path):
+    orch = harness(
+        tmp_path,
+        {
+            "one": dict.fromkeys(Level, Down(OUT_OF_QUOTA)),
+            "two": dict.fromkeys(Level, Down(OUT_OF_QUOTA)),
+        },
+        {"Ada": "one", "Bo": "two", "Cy": "one"},
+    )
+    run = asyncio.create_task(orch.run())
+    await until(lambda: all(h.cooling(time.time()) for h in orch.health.values()))
+    await asyncio.sleep(0.05)
+
+    assert all(a.alive for a in orch.agents.values())
+    assert not orch._stop.is_set(), "an outage must not close the session"
+    orch.stop("done")
+    await asyncio.wait_for(run, 5)
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_answer_still_kills_an_agent_that_never_recovers(tmp_path):
+    """The one fault that is the agent's own: four unusable turns and it is gone."""
+    orch = harness(
+        tmp_path,
+        {"mock": engines(MockProvider(lambda req: None))},
+        {"Ada": "mock", "Bo": "mock", "Cy": "mock"},
+    )
+    run = asyncio.create_task(orch.run())
+    await asyncio.wait_for(run, 10)
+
+    assert all(a.situation is Situation.DEAD for a in orch.agents.values())
+    assert orch.stopped_because == "every agent is gone"

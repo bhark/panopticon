@@ -30,8 +30,7 @@ async def vote_goal_reached(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
         )
     note = args["note"].strip()
     agent.voted_goal_reached = True
-    agent.situation = Situation.RELEASED
-    agent.wake_at = None
+    harness.enter(agent, Situation.RELEASED, note)
     harness.broadcast(
         QueueItem(
             "system",

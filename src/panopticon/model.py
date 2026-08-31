@@ -50,6 +50,7 @@ class Entry:
     text: str
     turn: int = 0
     at: float = field(default_factory=time.time)
+    tool: str = ""  # results only, for the cold-cache trim
 
 
 @dataclass(slots=True)
@@ -204,6 +205,7 @@ class Agent:
     transient: bool = False  # task closer; excluded from vote tally and jury minimum
     consecutive_failures: int = 0
     compaction_failures: int = 0
+    last_turn_at: float = 0.0
     last_action: str = ""
     entries: list[Entry] = field(default_factory=list)
     usage: Usage = field(default_factory=Usage)

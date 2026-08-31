@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Any, Protocol
 
 from panopticon.model import Action, ToolSpec, Usage
@@ -24,6 +26,8 @@ class TurnResponse:
     action: Action | None = None
     usage: Usage = field(default_factory=Usage)
     error: str | None = None
+    # set where the adapter knows which it is; classified from the error text otherwise
+    fault: Fault | None = None
 
 
 class Provider(Protocol):
@@ -133,3 +137,39 @@ def parse_action(text: str, tools: list[ToolSpec]) -> tuple[Action | None, str |
     if data["tool"] not in names:
         return None, f"unknown tool {data['tool']!r}; available: {', '.join(sorted(names))}"
     return Action(tool=str(data["tool"]), args=args, note=str(data.get("note") or "")), None
+
+
+# faults
+
+_EXHAUSTED = re.compile(
+    r"usage limit|quota|insufficient|billing|credit balance|out of credits|payment required"
+    r"|invalid api key|unauthorized|authentication|not authenticated|oauth|401|403|402"
+    r"|could not start|command not found|no such file or directory|is not set",
+    re.I,
+)
+
+_OVERFLOW = re.compile(
+    r"prompt is too long|input length and .max_tokens. exceed|context (window|length|limit)"
+    r"|too many tokens|maximum context|exceeds the context|context_length_exceeded",
+    re.I,
+)
+
+
+class Fault(StrEnum):
+    MALFORMED = "malformed"  # the model answered, we could not use the answer
+    TRANSIENT = "transient"  # the provider is busy or unreachable; it will come back
+    EXHAUSTED = "exhausted"  # the provider is out for this run: no quota, no key, no binary
+
+
+def classify(response: TurnResponse) -> Fault:
+    """Unknown wordings are transient on purpose: back off rather than kill an agent."""
+    if response.fault is not None:
+        return response.fault
+    if _EXHAUSTED.search(response.error or ""):
+        return Fault.EXHAUSTED
+    return Fault.TRANSIENT
+
+
+def is_overflow(error: str) -> bool:
+    """The prompt did not fit. Our estimate can be wrong wherever usage goes unreported."""
+    return bool(_OVERFLOW.search(error))

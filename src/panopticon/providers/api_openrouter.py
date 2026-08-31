@@ -16,7 +16,13 @@ import os
 import httpx
 
 from panopticon.model import Usage
-from panopticon.providers.base import TurnRequest, TurnResponse, parse_action, strict_action_schema
+from panopticon.providers.base import (
+    Fault,
+    TurnRequest,
+    TurnResponse,
+    parse_action,
+    strict_action_schema,
+)
 
 RETRY_STATUS = (408, 429, 500, 502, 503, 504)
 
@@ -60,7 +66,12 @@ class OpenRouter:
         if not content:
             return TurnResponse(error="openrouter returned no content", usage=usage)
         action, parse_error = parse_action(content, req.tools)
-        return TurnResponse(action=action, usage=usage, error=parse_error)
+        return TurnResponse(
+            action=action,
+            usage=usage,
+            error=parse_error,
+            fault=Fault.MALFORMED if parse_error else None,
+        )
 
     async def summarize(self, system: str, text: str) -> str | None:
         data, _ = await self._post(_body(self.model, system, text, self.effort))

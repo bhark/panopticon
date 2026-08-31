@@ -8,12 +8,14 @@ import time
 from panopticon.services.bus import Bus
 
 DEBOUNCE = 0.2
+MAX_BATCH = 0.5
 
 
 def fast_bus() -> tuple[Bus, list[list[str]]]:
     fired: list[list[str]] = []
     bus = Bus(fired.append)
     bus.DEBOUNCE_SECONDS = DEBOUNCE
+    bus.MAX_BATCH_SECONDS = MAX_BATCH
     return bus, fired
 
 
@@ -39,6 +41,28 @@ async def test_a_second_shout_extends_the_window_instead_of_riding_the_first_tim
     runner.cancel()
     await asyncio.gather(runner, return_exceptions=True)
     assert runner.cancelled()
+
+
+async def test_unbroken_shouting_still_flushes_at_the_batch_cap():
+    bus, fired = fast_bus()
+    runner = asyncio.create_task(bus.run())
+
+    shouting = True
+
+    async def keep_shouting() -> None:
+        while shouting:
+            bus.shout("ada", "again")
+            await asyncio.sleep(DEBOUNCE * 0.5)  # never quiet long enough to end the window
+
+    talker = asyncio.create_task(keep_shouting())
+    await asyncio.sleep(MAX_BATCH * 1.5)
+    shouting = False
+    await asyncio.gather(talker, return_exceptions=True)
+
+    assert fired == [["ada"]]
+
+    runner.cancel()
+    await asyncio.gather(runner, return_exceptions=True)
 
 
 async def test_a_quiet_bus_never_flushes():

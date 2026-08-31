@@ -6,6 +6,7 @@ from typing import Any
 
 from panopticon.model import ActionResult, ArgSpec, QueueItem, Situation, ToolCtx
 from panopticon.tools.registry import tool
+from panopticon.transcript import dedupe_result
 
 VIEW_KB = "view_knowledge_base"
 SUBMIT_TRUTH = "submit_truth"
@@ -30,7 +31,7 @@ _READERS = (*_ASSERTERS, Situation.JURY)
 )
 async def view_knowledge_base(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     ctx.agent.seen_kb = True
-    return ActionResult(True, ctx.harness.kb.render())
+    return ActionResult(True, dedupe_result(ctx.agent, VIEW_KB, ctx.harness.kb.render()))
 
 
 @tool(

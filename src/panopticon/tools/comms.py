@@ -6,6 +6,7 @@ from typing import Any
 
 from panopticon.model import ActionResult, ArgSpec, QueueItem, ToolCtx
 from panopticon.tools.registry import EVERYWHERE, tool
+from panopticon.transcript import dedupe_result
 
 SEND_DM = "send_direct_message"
 SHOUT = "send_shoutboard_message"
@@ -68,4 +69,5 @@ async def send_shoutboard_message(ctx: ToolCtx, args: dict[str, Any]) -> ActionR
     situations=EVERYWHERE,
 )
 async def view_shoutboard(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
-    return ActionResult(True, ctx.harness.bus.render_shoutboard())
+    board = ctx.harness.bus.render_shoutboard()
+    return ActionResult(True, dedupe_result(ctx.agent, VIEW_SHOUTBOARD, board))

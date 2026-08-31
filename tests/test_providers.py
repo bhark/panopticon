@@ -9,7 +9,15 @@ import pytest
 
 from panopticon.model import Action, ArgSpec, Level, ToolSpec
 from panopticon.providers import _cli, api_openrouter, cli_claude, cli_codex, cli_kimi, registry
-from panopticon.providers.base import TurnRequest, parse_action, strict_action_schema
+from panopticon.providers.base import (
+    Fault,
+    TurnRequest,
+    TurnResponse,
+    classify,
+    is_overflow,
+    parse_action,
+    strict_action_schema,
+)
 from panopticon.providers.mock import MockProvider
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -501,3 +509,57 @@ class TestRegistry:
     def test_a_missing_model_is_caught_at_config_time(self):
         with pytest.raises(ValueError, match="no model"):
             registry.build("x", {"kind": "openrouter"})
+
+
+class TestFaults:
+    def fault(self, error: str) -> Fault:
+        return classify(TurnResponse(error=error))
+
+    def test_an_adapter_that_knows_it_got_a_bad_answer_says_so(self):
+        response = TurnResponse(error="response was not valid JSON", fault=Fault.MALFORMED)
+        assert classify(response) is Fault.MALFORMED
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            "openrouter 429: {'error': 'Monthly usage limit reached'}",
+            "openrouter 401: {'error': 'No auth credentials found'}",
+            "OPENROUTER_API_KEY is not set",
+            "could not start claude: [Errno 2] No such file or directory",
+            "error: Credit balance is too low",
+            "usage limit reached, resets at 14:00",
+        ],
+    )
+    def test_a_provider_that_is_out_for_the_run_is_exhausted(self, error):
+        assert self.fault(error) is Fault.EXHAUSTED
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            "openrouter 429: {'error': 'rate limit exceeded'}",
+            "openrouter 503: upstream unavailable",
+            "overloaded_error: the model is overloaded",
+            "claude timed out after 180s",
+            "codex exited 1 with no agent message\nconnection reset by peer",
+        ],
+    )
+    def test_a_provider_that_will_come_back_is_transient(self, error):
+        assert self.fault(error) is Fault.TRANSIENT
+
+    def test_an_unrecognised_error_backs_off_rather_than_killing_an_agent(self):
+        assert self.fault("kimi exited 3 with no assistant message") is Fault.TRANSIENT
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            "prompt is too long: 214000 tokens > 200000 maximum",
+            "input length and `max_tokens` exceed context limit: 188059 + 20000 > 200000",
+            "openrouter 400: {'code': 'context_length_exceeded'}",
+            "This model's maximum context length is 128000 tokens",
+        ],
+    )
+    def test_an_oversized_prompt_is_recognised_whoever_words_it(self, error):
+        assert is_overflow(error)
+
+    def test_an_ordinary_failure_is_not_read_as_overflow(self):
+        assert not is_overflow("openrouter 429: rate limit exceeded")

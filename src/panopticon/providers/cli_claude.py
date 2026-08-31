@@ -13,7 +13,13 @@ import json
 
 from panopticon.model import Usage
 from panopticon.providers import _cli
-from panopticon.providers.base import TurnRequest, TurnResponse, action_schema, parse_action
+from panopticon.providers.base import (
+    Fault,
+    TurnRequest,
+    TurnResponse,
+    action_schema,
+    parse_action,
+)
 
 
 class ClaudeCLI:
@@ -95,7 +101,12 @@ def parse_output(stdout: str, tools: list) -> TurnResponse | None:
     structured = event.get("structured_output")
     raw = json.dumps(structured) if isinstance(structured, dict) else str(event.get("result") or "")
     action, error = parse_action(raw, tools)
-    return TurnResponse(action=action, usage=usage, error=error and _cli.because(error, raw))
+    return TurnResponse(
+        action=action,
+        usage=usage,
+        error=error and _cli.because(error, raw),
+        fault=Fault.MALFORMED if error else None,
+    )
 
 
 def _result_event(stdout: str) -> dict | None:

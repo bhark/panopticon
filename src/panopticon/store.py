@@ -75,8 +75,12 @@ class Store:
         with self.events_file.open("a") as fh:
             fh.write(json.dumps(dump(event)) + "\n")
 
+    def transcript_path(self, agent: str) -> Path:
+        return self.transcripts / f"{agent}.jsonl"
+
     def append_entry(self, agent: str, entry: Entry) -> None:
-        with (self.transcripts / f"{agent}.jsonl").open("a") as fh:
+        """Survives the resets and compactions that state.json does not: nothing here is dropped."""
+        with self.transcript_path(agent).open("a") as fh:
             fh.write(json.dumps(dump(entry)) + "\n")
 
     def save(self, state: dict[str, Any]) -> None:

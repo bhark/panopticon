@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from panopticon.model import Action, Usage
-from panopticon.providers.base import TurnRequest, TurnResponse
+from panopticon.providers.base import Fault, TurnRequest, TurnResponse
 
 Script = dict[str, list[Action]] | list[Action] | Callable[[TurnRequest], Action | None]
 
@@ -37,7 +37,11 @@ class MockProvider:
         usage = Usage(context_tokens=self.context_tokens)
         action = self._next(req)
         if action is None:
-            return TurnResponse(error=f"mock script exhausted for {req.agent}", usage=usage)
+            return TurnResponse(
+                error=f"mock script exhausted for {req.agent}",
+                usage=usage,
+                fault=Fault.MALFORMED,
+            )
         return TurnResponse(action=action, usage=usage)
 
     async def summarize(self, system: str, text: str) -> str | None:

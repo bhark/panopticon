@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import pytest
 
 from panopticon import transcript as tx
@@ -122,29 +124,63 @@ class TestCompaction:
         assert "Do not call tools" in seen[0]
         assert "you are Suzanne" in seen[0]
 
-    async def test_breaker_stops_after_three_consecutive_failures(self):
+    async def test_a_failed_summary_still_gets_the_transcript_under_the_window(self):
         a = agent()
         long_run(a)
         provider = MockProvider(context_window=40_000, summary=None)
 
+        assert await tx.compact(a, provider, "system") == "dropped"
+        assert not tx.needs_compaction(a, provider)
+        assert a.entries[0].kind == "note"
+        assert "dropped" in a.entries[0].text
+
+    async def test_the_note_points_at_the_log_when_there_is_one(self):
+        a = agent()
+        long_run(a)
+        provider = MockProvider(context_window=40_000, summary=None)
+
+        await tx.compact(a, provider, "system", log_path="/tmp/Suzanne.jsonl")
+        assert "/tmp/Suzanne.jsonl" in a.entries[0].text
+
+    async def test_a_fallback_provider_writes_the_summary_when_the_agent_own_cannot(self):
+        a = agent()
+        long_run(a)
+        down = MockProvider(context_window=40_000, summary=None)
+        up = MockProvider(context_window=40_000, summary="what happened earlier")
+
+        assert await tx.compact(a, down, "system", fallbacks=(up,)) == "summarized"
+        assert "what happened earlier" in tx.render(a)
+        assert a.compaction_failures == 0
+
+    async def test_the_breaker_stops_calling_a_provider_that_keeps_failing(self):
+        a = agent()
+        provider = MockProvider(context_window=40_000, summary=None)
+
         for _ in range(3):
-            assert await tx.compact(a, provider, "system") is False
+            long_run(a)
+            assert await tx.compact(a, provider, "system") == "dropped"
         assert len(provider.summarized) == 3
 
-        assert await tx.compact(a, provider, "system") is False
+        long_run(a)
+        assert await tx.compact(a, provider, "system") == "dropped"
         assert len(provider.summarized) == 3, "breaker should stop calling the provider"
 
     async def test_a_success_clears_the_strike_count(self):
         a = agent()
         long_run(a)
         failing = MockProvider(context_window=40_000, summary=None)
-        assert await tx.compact(a, failing, "system") is False
-        assert await tx.compact(a, failing, "system") is False
-
-        assert await tx.compact(a, MockProvider(context_window=40_000, summary="ok"), "system")
+        assert await tx.compact(a, failing, "system") == "dropped"
+        long_run(a)
+        assert await tx.compact(a, failing, "system") == "dropped"
 
         long_run(a)
-        assert await tx.compact(a, failing, "system") is False
+        assert (
+            await tx.compact(a, MockProvider(context_window=40_000, summary="ok"), "system")
+            == "summarized"
+        )
+
+        long_run(a)
+        assert await tx.compact(a, failing, "system") == "dropped"
         assert len(failing.summarized) == 3, "strikes should have restarted from zero"
 
     async def test_reset_clears_the_strike_count_too(self):
@@ -261,3 +297,111 @@ class TestRender:
             ("note", "You finished work on the parser.")
         ]
         assert "git status" not in tx.render(a)
+
+
+class TestSoftWindow:
+    def test_a_huge_window_is_clamped_so_a_model_never_runs_past_where_it_degrades(self):
+        big = MockProvider(context_window=1_000_000)
+        assert tx.usable_window(big) == tx.SOFT_WINDOW
+
+        a = agent()
+        a.usage.context_tokens = tx.SOFT_WINDOW - tx.RESERVE_TOKENS + 1
+        a.usage.measured_entries = len(a.entries)
+        assert tx.needs_compaction(a, big)
+
+    def test_a_window_under_the_cap_is_left_alone(self):
+        assert tx.usable_window(MockProvider(context_window=128_000)) == 128_000
+
+    def test_the_estimate_counts_the_system_prompt_when_the_provider_reports_nothing(self):
+        a = agent()
+        long_run(a, turns=2)
+        assert a.usage.context_tokens == 0
+        bare = tx.estimate_tokens(a)
+        assert tx.estimate_tokens(a, "x" * 4000) == bare + 1000
+
+    def test_a_reported_figure_already_covers_the_system_prompt(self):
+        a = agent()
+        a.usage.context_tokens = 50_000
+        a.usage.measured_entries = len(a.entries)
+        assert tx.estimate_tokens(a, "x" * 4000) == 50_000
+
+
+class TestColdTrim:
+    def cooled(self) -> Agent:
+        a = agent()
+        for n in range(1, 9):
+            turn(a, "bash", {"command": f"echo {n}"}, "y" * 400)
+            a.entries[-1].tool = "bash"
+        a.last_turn_at = time.time() - tx.COLD_CACHE_SECONDS - 1
+        return a
+
+    def test_nothing_happens_while_the_cache_could_still_be_alive(self):
+        a = self.cooled()
+        a.last_turn_at = time.time() - 60
+        assert tx.trim_cold(a) == 0
+        assert tx.CLEARED not in tx.render(a)
+
+    def test_a_fresh_agent_has_nothing_to_go_on_and_is_left_alone(self):
+        a = self.cooled()
+        a.last_turn_at = 0.0
+        assert tx.trim_cold(a) == 0
+
+    def test_re_readable_results_are_cleared_past_the_cache_ttl(self):
+        a = self.cooled()
+        assert tx.trim_cold(a) == 3  # eight results, the last five kept
+        assert tx.render(a).count(tx.CLEARED) == 3
+
+    def test_the_five_most_recent_results_survive(self):
+        a = self.cooled()
+        tx.trim_cold(a)
+        kept = [e for e in a.entries if e.kind == "result" and e.text != tx.CLEARED]
+        assert len(kept) == 5
+
+    def test_the_action_that_produced_a_cleared_result_stays(self):
+        a = self.cooled()
+        tx.trim_cold(a)
+        assert tx.render(a).count("echo 1") == 1
+
+    def test_a_result_the_agent_cannot_fetch_again_is_never_touched(self):
+        a = self.cooled()
+        for entry in a.entries:
+            if entry.kind == "result":
+                entry.tool = "send_direct_message"
+        assert tx.trim_cold(a) == 0
+
+    def test_clearing_twice_changes_nothing_the_second_time(self):
+        a = self.cooled()
+        assert tx.trim_cold(a) == 3
+        assert tx.trim_cold(a) == 0
+
+    def test_the_allowlist_names_tools_that_actually_exist(self):
+        from panopticon.tools.registry import REGISTRY
+
+        assert not tx.RE_READABLE - set(REGISTRY)
+
+    def test_the_stale_context_figure_is_dropped_so_the_saving_is_seen(self):
+        a = self.cooled()
+        a.usage.context_tokens = 90_000
+        a.usage.measured_entries = len(a.entries)
+        tx.trim_cold(a)
+        assert a.usage.context_tokens == 0
+
+
+class TestDedupeResult:
+    def test_repeat_view_collapses_and_changed_view_comes_back_in_full(self):
+        a = agent()
+        board = "shoutboard\nCy: hello"
+        assert tx.dedupe_result(a, "view_shoutboard", board) == board
+        tx.append_result(a, board, "view_shoutboard")
+        assert tx.dedupe_result(a, "view_shoutboard", board) == tx.UNCHANGED
+        tx.append_result(a, tx.UNCHANGED, "view_shoutboard")
+        # the placeholder is skipped, so the collapse holds over repeated calls
+        assert tx.dedupe_result(a, "view_shoutboard", board) == tx.UNCHANGED
+        assert tx.dedupe_result(a, "view_shoutboard", board + "\nAda: hi") != tx.UNCHANGED
+
+    def test_a_cleared_result_answers_in_full_again(self):
+        a = agent()
+        board = "shoutboard\nCy: hello"
+        tx.append_result(a, board, "view_shoutboard")
+        a.entries[-1].text = tx.CLEARED
+        assert tx.dedupe_result(a, "view_shoutboard", board) == board
