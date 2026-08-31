@@ -16,6 +16,7 @@ from panopticon.model import (
     Event,
     QueueItem,
     Situation,
+    Submission,
     Task,
     ToolCtx,
 )
@@ -35,6 +36,8 @@ IDLE_POKE_SECONDS = 900
 
 
 class Orchestrator:
+    HUMAN = "The human"
+
     def __init__(
         self,
         *,
@@ -127,6 +130,9 @@ class Orchestrator:
 
     async def _loop(self, agent: Agent) -> None:
         while agent.alive and not self._pausing and not self._stop.is_set():
+            await asyncio.sleep(
+                0
+            )  # a provider that answers without awaiting must not starve the loop
             items = await self._collect(agent)
             if self._pausing or self._stop.is_set():
                 return
@@ -148,7 +154,7 @@ class Orchestrator:
                 response = await self.providers[agent.provider].act(request)
             agent.turns += 1
 
-            transcript.record_usage(agent, response.usage)
+            transcript.note_usage(agent, response.usage)
             if response.action is None:
                 if self._recover(agent, response.error or "no action"):
                     continue
@@ -251,9 +257,45 @@ class Orchestrator:
                     f"Task {task.id} ({task.title}) has all its seats filled and has started. "
                     f"You are working in the git worktree at {path}, alongside "
                     f"{', '.join(n for n in task.holders if n != name) or 'nobody else'}.",
+                    Situation.ON_TASK,
                 ),
             )
         self.emit(Event("task", f"{task.id} started: {task.title}"))
+
+    def resettle_jury(
+        self, old_id: str, outcome: str, submission: Submission, exclude: tuple[str, ...] = ()
+    ) -> None:
+        carried = set(submission.jurors) if outcome == "restated" else set()
+        for agent in self.agents.values():
+            if agent.name in exclude or agent.situation is not Situation.JURY:
+                continue
+            if agent.submission_id != old_id:
+                continue
+            if agent.name in carried:
+                agent.submission_id = submission.id
+                self.enter(
+                    agent,
+                    Situation.JURY,
+                    prompts.situation_preprompt(
+                        agent,
+                        self,
+                        f"{old_id} was restated and is now {submission.id}. You are judging the "
+                        "new statement from scratch.",
+                        Situation.JURY,
+                    ),
+                )
+            else:
+                agent.submission_id = None
+                self.enter(
+                    agent,
+                    Situation.IDLE,
+                    prompts.situation_preprompt(
+                        agent,
+                        self,
+                        f"Jury duty on {old_id} ended before you ruled on it: {outcome}.",
+                        Situation.IDLE,
+                    ),
+                )
 
     async def close_task(self, task: Task) -> None:
         for name in task.holders:
@@ -267,6 +309,7 @@ class Orchestrator:
                     self,
                     f"You finished work on {task.id} ({task.title}). It is sitting in the git "
                     f"worktree at {task.worktree}. Another agent is integrating it.",
+                    Situation.IDLE,
                 ),
             )
         self._spawn_closer(task)
@@ -296,6 +339,7 @@ class Orchestrator:
                 "Two jobs. Decide what happens to that worktree, and handle the social side: "
                 "tell whoever needs to know, and put anything the task proved into the "
                 "knowledge base. Then mark yourself done.",
+                Situation.CLOSING_TASK,
             ),
         )
         self._launch_loop(closer)
@@ -332,7 +376,7 @@ class Orchestrator:
                     agent,
                     Situation.IDLE,
                     prompts.situation_preprompt(
-                        agent, self, f"You left {task.id} ({task.title}): {why}."
+                        agent, self, f"You left {task.id} ({task.title}): {why}.", Situation.IDLE
                     ),
                 )
             if notify:
@@ -382,7 +426,7 @@ class Orchestrator:
         self.emit(Event("shout", f"shoutboard: {names}"))
 
     def human_shout(self, body: str) -> None:
-        self.bus.shout("The human", body)
+        self.bus.shout(self.HUMAN, body)
 
     async def _autosave(self) -> None:
         while True:
@@ -412,6 +456,10 @@ class Orchestrator:
                     "forward, or vote that it has been reached.",
                 ),
             )
+
+    def context_window(self, provider: str) -> int:
+        found = self.providers.get(provider)
+        return found.context_window if found else 0
 
     def save(self) -> None:
         self.store.save(store_mod.snapshot(self))

@@ -184,9 +184,10 @@ async def _interactive(orch: Orchestrator) -> None:
         app.exit()
 
     app.on_shout = orch.human_shout
+    app.human_name = orch.HUMAN
     app.on_force_end = orch.force_end
     app.on_pause = lambda: spawn(pause_then_exit())
-    orch.subscribers.append(app.on_event)
+    orch.subscribers.append(app.harness_event)
 
     runner = asyncio.create_task(orch.run())
 

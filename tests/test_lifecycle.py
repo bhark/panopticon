@@ -1,0 +1,205 @@
+"""One full run of the harness, end to end, through the mock provider.
+
+Nothing here is scripted turn by turn. Each agent decides from the tools it is actually
+offered, so the test exercises the real concurrency: agents interleave, wake each other
+through their inboxes, and the run only ends if every hand-off in the design works.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from panopticon.config import Config
+from panopticon.model import Action, Agent, QueueItem, Situation
+from panopticon.orchestrator import Orchestrator
+from panopticon.providers.base import TurnRequest
+from panopticon.providers.mock import MockProvider
+from panopticon.services.worktrees import Worktrees
+from panopticon.store import (
+    STATE_DIRNAME,
+    Store,
+    restore_agent,
+    restore_task,
+    snapshot,
+)
+
+GOAL = "prove the harness closes a task and banks a truth"
+
+
+def git_repo(path: Path) -> Path:
+    path.mkdir(parents=True, exist_ok=True)
+    for argv in (
+        ["git", "init", "-q"],
+        ["git", "config", "user.email", "t@t"],
+        ["git", "config", "user.name", "t"],
+        ["git", "commit", "-q", "--allow-empty", "-m", "root"],
+    ):
+        subprocess.run(argv, cwd=path, check=True, capture_output=True)
+    return path
+
+
+def build(tmp_path: Path, policy) -> Orchestrator:
+    repo = git_repo(tmp_path / "repo")
+    store = Store(repo / STATE_DIRNAME)
+    return Orchestrator(
+        goal=GOAL,
+        agents=[Agent(name=n, provider="mock") for n in ("Ada", "Bo", "Cy")],
+        providers={"mock": MockProvider(policy)},
+        store=store,
+        worktrees=Worktrees(repo, store.worktrees),
+        config=Config(),
+    )
+
+
+class Crowd:
+    """Decides one action per turn from the tools on offer, never from a fixed script."""
+
+    def __init__(self) -> None:
+        self.orch: Orchestrator | None = None
+        self.ran: set[str] = set()
+        self.saw_kb: set[str] = set()
+        self.submitted: set[str] = set()
+
+    def __call__(self, req: TurnRequest) -> Action | None:
+        assert self.orch is not None
+        names = {t.name for t in req.tools}
+        me = req.agent
+
+        if "mark_integration_done" in names:
+            return self._closer(me, names)
+        if "submit_verdict" in names:
+            return Action("submit_verdict", {"verdict": "true", "reasoning": "checked the tree"})
+        if "finalize_task" in names:
+            return self._worker(me)
+        if "cancel_finalize" in names:
+            return Action("wait", {})
+        if "join_jury" in names:
+            return self._juror(me)
+        if self._work_is_done() and "vote_goal_reached" in names:
+            return Action("vote_goal_reached", {"note": "task closed, truth banked"})
+        if "create_task" in names:
+            return self._idle(me, names)
+        return Action("wait", {})
+
+    # branches
+
+    def _closer(self, me: str, names: set[str]) -> Action:
+        if me not in self.saw_kb:
+            self.saw_kb.add(me)
+            return Action("view_knowledge_base", {})
+        if me not in self.submitted and "submit_truth" in names:
+            self.submitted.add(me)
+            return Action(
+                "submit_truth",
+                {"title": "note.txt exists in the worktree", "body": "written by the task"},
+            )
+        return Action("mark_integration_done", {"summary": "merged and told everyone"})
+
+    def _worker(self, me: str) -> Action:
+        task = self.orch.board.task_of(me)
+        if me not in self.ran:
+            self.ran.add(me)
+            return Action("bash", {"command": "echo hi > note.txt"})
+        return Action(
+            "finalize_task",
+            {"task_id": task.id, "reason": "note written", "conclusion": "note.txt is there"},
+        )
+
+    def _juror(self, me: str) -> Action:
+        waiting = [s for s in self.orch.kb.pending.values() if s.submitted_by != me]
+        if not waiting:
+            return Action("wait", {})
+        return Action("join_jury", {"submission_id": waiting[0].id})
+
+    def _idle(self, me: str, names: set[str]) -> Action:
+        open_tasks = [t for t in self.orch.board.open_tasks() if t.started_at is None]
+        if not open_tasks:
+            if me != "Ada":
+                return Action("wait", {})
+            return Action(
+                "create_task",
+                {
+                    "title": "write the note",
+                    "description": "put a note in the worktree",
+                    "roles": ["writer", "checker"],
+                },
+            )
+        task = open_tasks[0]
+        seat = next((s for s in task.seats if s.holder is None), None)
+        if seat is None or "assign_self" not in names:
+            return Action("wait", {})
+        return Action("assign_self", {"task_id": task.id, "role": seat.role})
+
+    def _work_is_done(self) -> bool:
+        return bool(self.orch.board.archive()) and bool(self.orch.kb.truths)
+
+
+@pytest.mark.asyncio
+async def test_the_harness_runs_a_task_and_a_jury_to_completion(tmp_path):
+    crowd = Crowd()
+    orch = build(tmp_path, crowd)
+    crowd.orch = orch
+
+    await asyncio.wait_for(orch.run(), timeout=30)
+
+    assert orch.stopped_because.startswith("goal reached"), orch.stopped_because
+    archived = orch.board.archive()
+    assert len(archived) == 1
+    assert (Path(archived[0].worktree) / "note.txt").exists()
+    assert [t.title for t in orch.kb.truths] == ["note.txt exists in the worktree"]
+    assert not orch.kb.pending
+    assert all(
+        a.situation is Situation.RELEASED for a in orch.agents.values() if a.counts_toward_goal
+    )
+    # the closer is transient: it exists, it did the integration, and it is gone
+    closers = [a for a in orch.agents.values() if a.transient]
+    assert len(closers) == 1 and closers[0].situation is Situation.RELIEVED
+
+
+@pytest.mark.asyncio
+async def test_a_paused_run_saves_a_state_file_that_restores(tmp_path):
+    crowd = Crowd()
+    orch = build(tmp_path, crowd)
+    crowd.orch = orch
+    runner = asyncio.create_task(orch.run())
+    await asyncio.sleep(0.2)
+    await orch.pause()
+    await asyncio.wait_for(runner, timeout=5)
+
+    state = orch.store.load()
+    assert state["goal"] == GOAL
+    assert state["tasks"], "the run got far enough to have a task before pausing"
+
+    restored = {a["name"]: restore_agent(dict(a)) for a in state["agents"]}
+    for name, agent in restored.items():
+        live = orch.agents[name]
+        assert agent.situation is live.situation
+        assert agent.turns == live.turns
+        assert [e.text for e in agent.entries] == [e.text for e in live.entries]
+
+    tasks = [restore_task(dict(raw)) for raw in state["tasks"]]
+    assert [t.id for t in tasks] == [t.id for t in orch.board.tasks.values()]
+    assert [s.holder for s in tasks[0].seats] == [
+        s.holder for s in next(iter(orch.board.tasks.values())).seats
+    ]
+
+
+def test_an_undelivered_inbox_survives_the_snapshot(tmp_path):
+    """A pause must not lose the DMs an agent had not read yet."""
+    crowd = Crowd()
+    orch = build(tmp_path, crowd)
+    crowd.orch = orch
+    orch.post("Cy", QueueItem("dm", "psst"))
+    orch.post("Cy", QueueItem("shout", "Ada wrote to the shoutboard"))
+
+    raw = snapshot(orch)
+    cy = next(a for a in raw["agents"] if a["name"] == "Cy")
+    assert [item["text"] for item in cy["pending"]] == ["psst", "Ada wrote to the shoutboard"]
+    assert [i.text for i in restore_agent(dict(cy)).inbox] == [
+        "psst",
+        "Ada wrote to the shoutboard",
+    ]

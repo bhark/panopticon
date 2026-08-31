@@ -38,12 +38,15 @@ def test_the_system_prompt_is_byte_identical_while_only_the_transcript_moves(tmp
     assert prompt(h, "Ada") == before
 
 
-def test_a_closer_spawning_does_not_disturb_everyone_elses_prompt(tmp_path):
+def test_the_prompt_does_not_move_when_the_population_does(tmp_path):
     h = harness(tmp_path)
     before = prompt(h, "Ada")
-    h.agents["Zeb"] = Agent(name="Zeb", provider="fake", transient=True)
+
+    h.agents["Zeb"] = Agent(name="Zeb", provider="fake", transient=True)  # a closer spins up
+    h.agents["Cy"].situation = Situation.RELEASED
+    del h.agents["Bo"]  # reaped
+
     assert prompt(h, "Ada") == before
-    assert "one of 3 agents" in before
 
 
 def test_the_prompt_moves_when_the_situation_or_the_ending_does(tmp_path):
@@ -64,7 +67,7 @@ def test_the_prompt_carries_the_goal_the_identity_and_every_tool_with_its_argume
     h = harness(tmp_path)
     text = prompt(h, "Ada")
     assert h.goal in text
-    assert "You are Ada." in text
+    assert text.startswith("You are Ada,")
     for spec in tools_for(h.agents["Ada"], h):
         assert f"## {spec.name}" in text
         for key, arg in spec.args.items():

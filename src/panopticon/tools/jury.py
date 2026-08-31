@@ -98,6 +98,9 @@ async def submit_verdict(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
         agent.name, judged, call, args["reasoning"].strip(), restated_title, restated_body
     )
     _announce(ctx, submission, outcome, call)
+    # only a resolving verdict strands the others; a pending one leaves them judging
+    if outcome != "pending":
+        harness.resettle_jury(judged, outcome, submission, exclude=(agent.name,))
 
     agent.submission_id = None
     harness.enter(

@@ -29,12 +29,25 @@ from panopticon.model import (
 STATE_DIRNAME = ".panopticon"
 
 
-def _drop_runtime(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    return {k: v for k, v in pairs if k not in ("inbox", "wakeup")}
+RUNTIME_FIELDS = ("inbox", "wakeup")
 
 
 def _dump(obj: Any) -> Any:
-    return asdict(obj, dict_factory=_drop_runtime) if is_dataclass(obj) else obj
+    return asdict(obj) if is_dataclass(obj) else obj
+
+
+def _dump_agent(agent: Agent) -> dict[str, Any]:
+    """asdict deep-copies every field before any filter runs, and an asyncio.Event cannot be
+    copied, so the runtime fields have to be skipped before they are ever touched."""
+    out: dict[str, Any] = {}
+    for f in fields(agent):
+        if f.name in RUNTIME_FIELDS:
+            continue
+        out[f.name] = (
+            _dump(getattr(agent, f.name)) if f.name in ("usage",) else getattr(agent, f.name)
+        )
+    out["entries"] = [_dump(e) for e in agent.entries]
+    return out
 
 
 def _load[T](cls: type[T], data: dict[str, Any]) -> T:
@@ -86,7 +99,8 @@ def snapshot(harness: Any) -> dict[str, Any]:
         "force_ending": harness.force_ending,
         "saved_at": time.time(),
         "agents": [
-            _dump(a) | {"pending": [_dump(i) for i in a.inbox]} for a in harness.agents.values()
+            _dump_agent(a) | {"pending": [_dump(i) for i in a.inbox]}
+            for a in harness.agents.values()
         ],
         "tasks": [_dump(t) for t in harness.board.tasks.values()],
         "truths": [_dump(t) for t in harness.kb.truths],
@@ -114,7 +128,7 @@ def restore_task(data: dict[str, Any]) -> Task:
         seat = _load(Seat, raw)
         seat.finalization = _load(Finalization, fin) if fin else None
         seats.append(seat)
-    task = _load(Task, data)
+    task = _load(Task, {**data, "seats": []})  # seats is required positionally
     task.seats = seats
     return task
 

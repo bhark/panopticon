@@ -35,6 +35,7 @@ class VerdictCall(StrEnum):
 
 # transcript
 
+
 @dataclass(slots=True)
 class Entry:
     """One line of an agent's transcript. Appended, never rewritten."""
@@ -57,6 +58,7 @@ class Usage:
 
 
 # actions
+
 
 @dataclass(frozen=True, slots=True)
 class Action:
@@ -85,6 +87,7 @@ class QueueItem:
 
 
 # task board
+
 
 @dataclass(slots=True)
 class Finalization:
@@ -134,6 +137,7 @@ class Task:
 
 # knowledge base
 
+
 @dataclass(slots=True)
 class Truth:
     id: str
@@ -165,6 +169,7 @@ class Submission:
 
 # messages
 
+
 @dataclass(slots=True)
 class DirectMessage:
     sender: str
@@ -181,6 +186,7 @@ class Shout:
 
 
 # agents
+
 
 @dataclass(slots=True)
 class Agent:
@@ -249,6 +255,12 @@ class Harness(Protocol):
 
     def leave_task(self, name: str, task: Task, why: str, notify: bool = True) -> None:
         """Release a seat. The only correct way to do it: it also settles everyone left behind."""
+        ...
+
+    def resettle_jury(
+        self, old_id: str, outcome: str, submission: Submission, exclude: tuple[str, ...] = ()
+    ) -> None:
+        """A resolved submission leaves jurors stranded; this returns or re-points every one."""
         ...
 
     async def close_task(self, task: Task) -> None:

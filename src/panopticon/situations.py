@@ -85,7 +85,11 @@ def tool_names(agent: Agent, harness: Harness) -> list[str]:
     if agent.situation in _TRUTH_SUBMITTABLE and agent.seen_kb:
         names.append(SUBMIT_TRUTH)
 
-    judgeable = [s for s in harness.kb.pending.values() if s.submitted_by != agent.name]
+    judgeable = [
+        s
+        for s in harness.kb.pending.values()
+        if s.submitted_by != agent.name and agent.name not in s.jurors
+    ]
     if judgeable and agent.situation is not Situation.JURY:
         names.append(LIST_JURY)
         if agent.situation in _JURY_JOINABLE:

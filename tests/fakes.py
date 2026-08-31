@@ -180,6 +180,7 @@ class FakeHarness:
         self.launched: list[Task] = []
         self.closed: list[Task] = []
         self.retired: list[str] = []
+        self.left: list[tuple[str, str, str]] = []
         self.tallies = 0
 
     def post(self, recipient: str, item: QueueItem) -> None:
@@ -211,6 +212,36 @@ class FakeHarness:
                 situation_preprompt(holder, self, "", Situation.ON_TASK),
             )
         self.launched.append(task)
+
+    def resettle_jury(self, old_id, outcome, submission, exclude=()):
+        for agent in self.agents.values():
+            if agent.name in exclude or agent.submission_id != old_id:
+                continue
+            if outcome == "restated" and agent.name in submission.jurors:
+                agent.submission_id = submission.id
+                continue
+            agent.submission_id = None
+            agent.situation = Situation.IDLE
+
+    def leave_task(self, name: str, task: Task, why: str, notify: bool = True) -> None:
+        seat = task.seat_of(name)
+        assert seat is not None
+        seat.holder, seat.finalization = None, None
+        leaver = self.agents[name]
+        leaver.task_id = None
+        self.enter(
+            leaver,
+            Situation.IDLE,
+            situation_preprompt(leaver, self, f"You left task {task.id}.", Situation.IDLE),
+        )
+        if task.started_at is not None:
+            task.started_at = None
+            for other in task.holders:
+                self.agents[other].situation = Situation.WAITING_FOR_SEATS
+        if notify:
+            for other in task.holders:
+                self.post(other, QueueItem("task", f"{name} {why}. Task {task.id} has stopped."))
+        self.left.append((name, task.id, why))
 
     async def close_task(self, task: Task) -> None:
         for name in task.holders:

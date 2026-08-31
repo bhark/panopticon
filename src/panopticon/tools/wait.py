@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import time
 from typing import Any
 
@@ -25,7 +26,8 @@ from panopticon.tools import tool
 async def wait(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     minutes = args.get("minutes")
     if minutes is None:
-        ctx.agent.wake_at = None
+        # inf, not None: None means "not waiting", and the loop would take another turn at once
+        ctx.agent.wake_at = math.inf
         return ActionResult(True, "Waiting. Anything arriving for you wakes you.")
     if minutes < 1:
         return ActionResult.fail("minutes must be 1 or more. Omit it to wait indefinitely.")

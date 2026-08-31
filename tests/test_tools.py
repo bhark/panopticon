@@ -17,6 +17,7 @@ from panopticon.situations import (
     RELIEVE_SELF,
     SEND_DM,
     SUBMIT_VERDICT,
+    UNASSIGN_SELF,
     VOTE_GOAL_REACHED,
     WAIT,
     WRITE_FILE,
@@ -243,17 +244,35 @@ async def test_a_task_ends_only_when_every_seat_finalizes(tmp_path):
     assert h.agents["Bo"].situation is Situation.IDLE
 
 
-async def test_leaving_a_running_task_clears_context_and_tells_whoever_stays(tmp_path):
+async def test_leaving_a_running_task_goes_through_the_harness(tmp_path):
     h = harness(tmp_path)
     task = await seat_everyone(h, {"Ada": "dev", "Bo": "reviewer"})
     h.agents["Ada"].entries.append(Entry("note", "before"))
 
-    assert (await run(h, "Ada", "unassign_self", task_id=task.id)).ok
+    assert (await run(h, "Ada", UNASSIGN_SELF, task_id=task.id)).ok
+    assert h.left == [("Ada", task.id, "unassigned themselves")]
+    assert task.seat_of("Ada") is None
     assert h.agents["Ada"].situation is Situation.IDLE
     assert h.agents["Ada"].task_id is None
     assert h.agents["Ada"].entries == []
-    assert any("left the dev seat" in m for m in h.messages_for("Bo"))
-    assert task.seat_of("Ada") is None
+    assert h.agents["Bo"].situation is Situation.WAITING_FOR_SEATS  # the task stopped under Bo
+    assert any("unassigned themselves" in m for m in h.messages_for("Bo"))
+
+
+async def test_unassigning_a_seat_you_do_not_hold_never_reaches_the_harness(tmp_path):
+    h = harness(tmp_path)
+    task = await seat_everyone(h, {"Ada": "dev"})
+
+    result = await dispatch(
+        ToolCtx(h.agents["Bo"], h), Action(UNASSIGN_SELF, {"task_id": task.id}), [UNASSIGN_SELF]
+    )
+    assert not result.ok and "no seat" in result.text
+
+    gone = await dispatch(
+        ToolCtx(h.agents["Ada"], h), Action(UNASSIGN_SELF, {"task_id": "T99"}), [UNASSIGN_SELF]
+    )
+    assert not gone.ok and "no task T99" in gone.text
+    assert not h.left
 
 
 # comms
