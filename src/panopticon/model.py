@@ -53,6 +53,7 @@ class Usage:
     cache_write: int = 0
     cost_usd: float = 0.0
     context_tokens: int = 0  # provider-reported total, 0 when unknown
+    measured_entries: int = 0  # entries the figure above covered, for the hybrid estimate
 
 
 # actions
@@ -198,8 +199,9 @@ class Agent:
     last_action: str = ""
     entries: list[Entry] = field(default_factory=list)
     usage: Usage = field(default_factory=Usage)
-    # runtime only, never persisted
-    inbox: asyncio.Queue[QueueItem] = field(default_factory=asyncio.Queue, repr=False)
+    # runtime only, never persisted; a list rather than a Queue so it can be read without draining
+    inbox: list[QueueItem] = field(default_factory=list, repr=False)
+    wakeup: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
 
     @property
     def alive(self) -> bool:

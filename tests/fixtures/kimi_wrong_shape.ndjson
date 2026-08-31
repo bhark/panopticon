@@ -1,0 +1,3 @@
+{"role":"meta","type":"system.version","version":"0.39.1"}
+{"role":"assistant","content":"{\"action\": \"wait\", \"minutes\": 5}"}
+{"role":"meta","type":"session.resume_hint","session_id":"session_fb8c68a7-9a3d-408e-9e9a-1fd198df0f3a","command":"kimi -r session_fb8c68a7-9a3d-408e-9e9a-1fd198df0f3a","content":"To resume this session: kimi -r session_fb8c68a7-9a3d-408e-9e9a-1fd198df0f3a"}

@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"01a0597e-f861-7121-83f3-0289565faa49"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"{\"note\":\"No task is waiting, so I will wait for work.\",\"tool\":\"wait\",\"args\":\"{\\\"minutes\\\":1}\"}"}}
+{"type":"turn.completed","usage":{"input_tokens":17397,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":37,"reasoning_output_tokens":0}}

@@ -30,7 +30,7 @@ STATE_DIRNAME = ".panopticon"
 
 
 def _drop_runtime(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    return {k: v for k, v in pairs if k != "inbox"}
+    return {k: v for k, v in pairs if k not in ("inbox", "wakeup")}
 
 
 def _dump(obj: Any) -> Any:
@@ -86,21 +86,13 @@ def snapshot(harness: Any) -> dict[str, Any]:
         "force_ending": harness.force_ending,
         "saved_at": time.time(),
         "agents": [
-            _dump(a) | {"pending": [_dump(i) for i in _drain(a)]} for a in harness.agents.values()
+            _dump(a) | {"pending": [_dump(i) for i in a.inbox]} for a in harness.agents.values()
         ],
         "tasks": [_dump(t) for t in harness.board.tasks.values()],
         "truths": [_dump(t) for t in harness.kb.truths],
         "pending_submissions": [_dump(s) for s in harness.kb.pending.values()],
         "shouts": [_dump(s) for s in harness.bus.shouts],
     }
-
-
-def _drain(agent: Agent) -> list[QueueItem]:
-    """A paused agent's undelivered inbox has to survive, or resume loses its DMs."""
-    items = []
-    while not agent.inbox.empty():
-        items.append(agent.inbox.get_nowait())
-    return items
 
 
 def restore_agent(data: dict[str, Any]) -> Agent:
@@ -111,8 +103,7 @@ def restore_agent(data: dict[str, Any]) -> Agent:
     agent.entries = entries
     agent.usage = usage
     agent.situation = Situation(data["situation"])
-    for item in pending:
-        agent.inbox.put_nowait(item)
+    agent.inbox.extend(pending)  # undelivered DMs must survive a pause
     return agent
 
 
