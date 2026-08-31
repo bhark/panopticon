@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from panopticon.model import Action, Entry, Situation, ToolCtx
+from panopticon.model import Action, Entry, Level, Situation, ToolCtx
 from panopticon.tools import dispatch, tools_for
 from panopticon.tools.board import ASSIGN_SELF, CANCEL_FINALIZE, FINALIZE_TASK, UNASSIGN_SELF
 from panopticon.tools.comms import SEND_DM
@@ -57,6 +57,17 @@ async def test_int_arguments_are_coerced_from_strings_but_not_from_nonsense(tmp_
 
     missing = await run(h, "Ada", SEND_DM, to="Bo")
     assert not missing.ok and "body: missing" in missing.text
+
+
+async def test_the_board_names_everyone_here_and_the_level_they_run_at(tmp_path):
+    h = harness(tmp_path)
+    h.agents["Ada"].level = Level.CAPABLE
+    h.agents["Bo"].situation = Situation.RELIEVED  # gone, so not on the roster
+    result = await run(h, "Cy", "view_task_board")
+    assert "Ada [capable] idle" in result.text
+    assert "Cy [balanced] idle" in result.text
+    assert "Bo" not in result.text
+    assert "agents (2)" in result.text
 
 
 async def test_a_handler_that_raises_comes_back_as_a_failure_not_a_crash(tmp_path):

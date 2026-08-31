@@ -32,6 +32,7 @@ class OpenRouter:
         timeout: float = 180.0,
         attempts: int = 3,
         backoff: float = 1.0,
+        effort: str | None = None,
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self.context_window = context_window
@@ -41,11 +42,12 @@ class OpenRouter:
         self.timeout = timeout
         self.attempts = attempts
         self.backoff = backoff
+        self.effort = effort
         self._client = client
 
     async def act(self, req: TurnRequest) -> TurnResponse:
         schema = strict_action_schema(req.tools)
-        body = _body(self.model, req.system, req.prompt)
+        body = _body(self.model, req.system, req.prompt, self.effort)
         body["response_format"] = {
             "type": "json_schema",
             "json_schema": {"name": "action", "strict": True, "schema": schema},
@@ -61,7 +63,7 @@ class OpenRouter:
         return TurnResponse(action=action, usage=usage, error=parse_error)
 
     async def summarize(self, system: str, text: str) -> str | None:
-        data, _ = await self._post(_body(self.model, system, text))
+        data, _ = await self._post(_body(self.model, system, text, self.effort))
         return _content(data) or None if data is not None else None
 
     async def _post(self, body: dict) -> tuple[dict | None, str | None]:
@@ -96,8 +98,8 @@ class OpenRouter:
                 await client.aclose()
 
 
-def _body(model: str, system: str, prompt: str) -> dict:
-    return {
+def _body(model: str, system: str, prompt: str, effort: str | None = None) -> dict:
+    body = {
         "model": model,
         "messages": [
             {"role": "system", "content": system},
@@ -105,6 +107,9 @@ def _body(model: str, system: str, prompt: str) -> dict:
         ],
         "usage": {"include": True},
     }
+    if effort is not None:
+        body["reasoning"] = {"effort": effort}
+    return body
 
 
 def _content(data: dict) -> str:

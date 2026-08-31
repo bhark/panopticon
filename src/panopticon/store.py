@@ -15,6 +15,7 @@ from panopticon.model import (
     Event,
     Finalization,
     Harness,
+    Level,
     QueueItem,
     Seat,
     Situation,
@@ -113,6 +114,7 @@ def restore_agent(data: dict[str, Any]) -> Agent:
     agent.entries = entries
     agent.usage = usage
     agent.situation = Situation(data["situation"])
+    agent.level = Level(data.get("level", Level.BALANCED))
     agent.inbox.extend(pending)  # undelivered DMs must survive a pause
     return agent
 

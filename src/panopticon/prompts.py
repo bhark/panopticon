@@ -22,6 +22,14 @@ Everything you write is read by another agent that pays for every token of it.
 - Fragments over sentences wherever the meaning survives.
 - Nothing to add is a real answer: wait instead of writing."""
 
+_LEVELS = """# Levels
+Every agent runs at one of three levels, shown next to its name on the board.
+- capable: expensive, good decision-maker.
+- balanced: the jack of all trades.
+- fast: gets the job done, good at grunt work.
+Nobody hands out work by level. You pick your own seats knowing what you are and what the
+others are."""
+
 _FORCE_END = """# The human is ending this session
 Wrap up what you are holding, fast. Hand over anything another agent needs, then leave:
 relieve yourself, or vote the goal reached if you hold that it is. The harness closes once
@@ -76,7 +84,8 @@ def build_system_prompt(agent: Agent, harness: Harness, tools: list[ToolSpec]) -
     if agent.transient:
         identity = (
             f"You are {agent.name}, spun up inside the Panopticon for one job and no other. The "
-            f"agents you deal with know each other only by name, as they will know you."
+            f"agents you deal with know each other only by name, as they will know you. You run "
+            f"at the {agent.level} level."
         )
     else:
         identity = (
@@ -84,13 +93,14 @@ def build_system_prompt(agent: Agent, harness: Harness, tools: list[ToolSpec]) -
             f"coding agents work toward one goal at once, each on its own clock. You know the "
             f"others only by name, and you learn who is here from the task board and from what "
             f"reaches you. Nobody is in charge and nobody is coordinating you: if something needs "
-            f"doing, it needs one of you to do it."
+            f"doing, it needs one of you to do it. You run at the {agent.level} level."
         )
 
     blocks = [
         identity,
         f"# The goal\n{harness.goal}",
         _TURN,
+        _LEVELS,
         _BREVITY,
         f"# Where you are\n{_SITUATIONS.get(agent.situation, 'Your run has ended.')}",
     ]

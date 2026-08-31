@@ -24,11 +24,13 @@ class ClaudeCLI:
         context_window: int = 200_000,
         timeout: float = _cli.DEFAULT_TIMEOUT,
         bin: str = "claude",
+        effort: str | None = None,
     ) -> None:
         self.context_window = context_window
         self.model = model
         self.timeout = timeout
         self.bin = bin
+        self.effort = effort
 
     def _argv(self, system: str, prompt: str, schema: dict | None) -> list[str]:
         argv = [
@@ -51,6 +53,8 @@ class ClaudeCLI:
             self.model,
             "--no-session-persistence",
         ]
+        if self.effort is not None:
+            argv += ["--effort", self.effort]
         if schema is not None:
             argv += ["--json-schema", json.dumps(schema)]
         return argv

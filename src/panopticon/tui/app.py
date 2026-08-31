@@ -19,7 +19,7 @@ from textual.binding import Binding, BindingType
 from textual.screen import Screen
 from textual.theme import Theme
 
-from panopticon.model import Event, Harness
+from panopticon.model import Agent, Event, Harness
 from panopticon.tui.dialogs import ConfirmScreen, HelpScreen, ShoutboxScreen
 from panopticon.tui.format import Coalescer
 from panopticon.tui.knowledge import KnowledgeScreen
@@ -86,8 +86,8 @@ class PanopticonApp(App[None]):
 
     # reads
 
-    def context_window(self, provider: str) -> int:
-        return self.harness.context_window(provider)
+    def context_window(self, agent: Agent) -> int:
+        return self.harness.context_window(agent)
 
     def banner(self) -> str:
         if self.harness.force_ending:

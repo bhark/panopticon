@@ -27,6 +27,12 @@ class Situation(StrEnum):
     DEAD = "dead"
 
 
+class Level(StrEnum):
+    FAST = "fast"
+    BALANCED = "balanced"
+    CAPABLE = "capable"
+
+
 class VerdictCall(StrEnum):
     TRUE = "true"
     FALSE = "false"
@@ -186,6 +192,7 @@ class Shout:
 class Agent:
     name: str
     provider: str
+    level: Level = Level.BALANCED
     situation: Situation = Situation.IDLE
     born_at: float = field(default_factory=time.time)
     turns: int = 0
@@ -235,7 +242,7 @@ class Harness(Protocol):
     worktrees: Worktrees
     force_ending: bool
 
-    def context_window(self, provider: str) -> int: ...
+    def context_window(self, agent: Agent) -> int: ...
 
     def post(self, recipient: str, item: QueueItem) -> None: ...
 

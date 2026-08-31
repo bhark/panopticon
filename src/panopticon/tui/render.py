@@ -37,7 +37,8 @@ from panopticon.tui.format import (
 AGENT_COLUMNS = (
     ("", 1),
     ("agent", 10),
-    ("provider", 18),
+    ("provider", 12),
+    ("level", 9),
     ("situation", 17),
     ("turns", 5),
     ("context", 13),
@@ -75,7 +76,8 @@ def agent_row(agent: Agent, window: int, now: float) -> list[Text]:
     return [
         Text(mark, style=style),
         Text(agent.name, style=f"bold {style}" if agent.alive else style),
-        Text(clip(agent.provider, 18), style=DIM),
+        Text(clip(agent.provider, 12), style=DIM),
+        Text(str(agent.level), style=DIM),
         Text(SITUATION_LABEL[agent.situation], style=SITUATION_STYLE[agent.situation]),
         Text(str(agent.turns), style=DIM, justify="right"),
         Text(ctx_text, style=ctx_style),
@@ -164,6 +166,7 @@ def agent_stats(agent: Agent, window: int, waiting: str, now: float) -> Renderab
         context.append(f"  {usage.context_tokens:,} / {window:,}", style=DIM)
     rows: list[tuple[str, RenderableType]] = [
         ("provider", Text(agent.provider, style=INK)),
+        ("level", Text(str(agent.level), style=INK)),
         (
             "situation",
             Text(SITUATION_LABEL[agent.situation], style=SITUATION_STYLE[agent.situation]),

@@ -7,7 +7,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from panopticon.model import Action, ArgSpec, ToolSpec
+from panopticon.model import Action, ArgSpec, Level, ToolSpec
 from panopticon.providers import _cli, api_openrouter, cli_claude, cli_codex, cli_kimi, registry
 from panopticon.providers.base import TurnRequest, parse_action, strict_action_schema
 from panopticon.providers.mock import MockProvider
@@ -150,6 +150,12 @@ class TestClaudeCLI:
         assert argv[argv.index("--mcp-config") + 1] == '{"mcpServers":{}}'
         assert "--no-session-persistence" in argv
 
+    def test_an_effort_reaches_the_invocation_only_when_one_is_set(self):
+        plain = cli_claude.ClaudeCLI(model="opus")._argv("sys", "hi", None)
+        assert "--effort" not in plain
+        argv = cli_claude.ClaudeCLI(model="opus", effort="xhigh")._argv("sys", "hi", None)
+        assert argv[argv.index("--effort") + 1] == "xhigh"
+
     async def test_a_missing_binary_comes_back_as_an_error_not_an_exception(self):
         provider = cli_claude.ClaudeCLI(model="haiku", bin="claude-does-not-exist")
         response = await provider.act(request())
@@ -215,6 +221,12 @@ class TestCodexCLI:
         assert argv[argv.index("-C") + 1] == "/tmp"
         assert argv[argv.index("--output-schema") + 1] == "/tmp/s.json"
         assert {"--ephemeral", "--ignore-user-config", "--skip-git-repo-check"} <= set(argv)
+
+    def test_an_effort_arrives_as_a_toml_config_override(self):
+        plain = cli_codex.CodexCLI(model="x")._argv("p", None, None)
+        assert "-c" not in plain
+        argv = cli_codex.CodexCLI(model="x", effort="high")._argv("p", None, None)
+        assert argv[argv.index("-c") + 1] == 'model_reasoning_effort="high"'
 
     async def test_a_missing_binary_comes_back_as_an_error(self):
         provider = cli_codex.CodexCLI(model="x", bin="codex-does-not-exist")
@@ -291,6 +303,28 @@ class TestOpenRouter:
                 },
             },
         )
+
+    async def test_an_effort_travels_in_the_reasoning_field(self, monkeypatch):
+        monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+        seen = {}
+
+        def handler(request):
+            seen.update(json.loads(request.content))
+            return self._ok('{"tool": "wait", "args": "{}"}')
+
+        await self._provider(handler, effort="low").act(request())
+        assert seen["reasoning"] == {"effort": "low"}
+
+    async def test_no_effort_means_no_reasoning_field(self, monkeypatch):
+        monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+        seen = {}
+
+        def handler(request):
+            seen.update(json.loads(request.content))
+            return self._ok('{"tool": "wait", "args": "{}"}')
+
+        await self._provider(handler).act(request())
+        assert "reasoning" not in seen
 
     async def test_a_missing_key_is_an_error_not_a_request(self, monkeypatch):
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
@@ -425,6 +459,40 @@ class TestRegistry:
             {"kind": "claude_cli", "model": "opus", "api_key_env": "NOPE", "base_url": "http://x"},
         )
         assert provider.model == "opus"
+
+    def test_a_level_overlays_the_entry_and_an_absent_one_leaves_it_alone(self):
+        entry = {
+            "kind": "claude_cli",
+            "model": "sonnet",
+            "levels": {"fast": {"model": "haiku"}, "capable": {"model": "opus", "effort": "xhigh"}},
+        }
+        built = registry.build_levels("claude", entry)
+        assert built[Level.FAST].model == "haiku"
+        assert built[Level.BALANCED].model == "sonnet"  # no overlay: the entry as written
+        assert (built[Level.CAPABLE].model, built[Level.CAPABLE].effort) == ("opus", "xhigh")
+
+    def test_a_provider_with_no_levels_answers_the_same_engine_everywhere(self):
+        built = registry.build_levels("kimi", {"kind": "kimi_cli", "model": "k3"})
+        assert {p.model for p in built.values()} == {"k3"}
+
+    def test_an_overlay_key_the_adapter_cannot_take_is_refused(self):
+        with pytest.raises(ValueError, match="modl"):
+            registry.build_levels(
+                "claude",
+                {"kind": "claude_cli", "model": "sonnet", "levels": {"capable": {"modl": "opus"}}},
+            )
+
+    def test_an_effort_on_kimi_is_refused_because_it_has_no_such_flag(self):
+        with pytest.raises(ValueError, match="effort"):
+            registry.build_levels(
+                "kimi", {"kind": "kimi_cli", "model": "k3", "levels": {"fast": {"effort": "low"}}}
+            )
+
+    def test_an_unknown_level_name_is_refused(self):
+        with pytest.raises(ValueError, match="quick"):
+            registry.build_levels(
+                "claude", {"kind": "claude_cli", "model": "sonnet", "levels": {"quick": {}}}
+            )
 
     def test_an_unknown_kind_names_the_ones_that_exist(self):
         with pytest.raises(ValueError, match="openai_cli"):

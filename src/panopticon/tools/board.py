@@ -33,6 +33,14 @@ def _has_finalized(agent: Agent, harness: Harness) -> bool:
     return bool(seat and seat.finalization)
 
 
+def _roster(harness: Harness) -> str:
+    """Who else is here and what they are. The only place an agent learns the head count."""
+    live = sorted((a for a in harness.agents.values() if a.alive), key=lambda a: a.name)
+    return f"agents ({len(live)})\n" + "\n".join(
+        f"  {a.name} [{a.level}] {a.situation}" for a in live
+    )
+
+
 def _tell_mates(ctx: ToolCtx, task: Task, text: str) -> None:
     for name in task.holders:
         if name != ctx.agent.name:
@@ -42,12 +50,13 @@ def _tell_mates(ctx: ToolCtx, task: Task, text: str) -> None:
 @tool(
     VIEW_BOARD,
     "Show the task board: open tasks with their seats, the role of each seat and who holds it, "
-    "plus the most recent archived tasks. Read it before you create a task, so you do not "
-    "duplicate one that already exists.",
+    "the most recent archived tasks, and every agent here with the level it runs at. Read it "
+    "before you create a task, so you do not duplicate one that already exists, and before you "
+    "take a seat, so you know who else could take it.",
     situations=_BOARD_READERS,
 )
 async def view_task_board(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
-    return ActionResult(True, ctx.harness.board.render())
+    return ActionResult(True, f"{ctx.harness.board.render()}\n\n{_roster(ctx.harness)}")
 
 
 @tool(

@@ -15,6 +15,7 @@ from panopticon.config import Config
 from panopticon.model import (
     Agent,
     Event,
+    Level,
     QueueItem,
     Situation,
     Submission,
@@ -44,7 +45,7 @@ class Orchestrator:
         *,
         goal: str,
         agents: list[Agent],
-        providers: dict[str, Provider],
+        providers: dict[str, dict[Level, Provider]],
         store: Store,
         worktrees: Worktrees,
         config: Config,
@@ -157,7 +158,7 @@ class Orchestrator:
                 cwd=self._cwd_for(agent),
             )
             async with self._sem[agent.provider]:
-                response = await self.providers[agent.provider].act(request)
+                response = await self._engine(agent).act(request)
             agent.turns += 1
 
             transcript.note_usage(agent, response.usage)
@@ -210,8 +211,11 @@ class Orchestrator:
         )
         return True
 
+    def _engine(self, agent: Agent) -> Provider:
+        return self.providers[agent.provider][agent.level]
+
     async def _maybe_compact(self, agent: Agent) -> None:
-        provider = self.providers[agent.provider]
+        provider = self._engine(agent)
         if not transcript.needs_compaction(agent, provider):
             return
         system = prompts.build_system_prompt(agent, self, tools_for(agent, self))
@@ -306,7 +310,13 @@ class Orchestrator:
 
     def _spawn_closer(self, task: Task) -> None:
         name = next(n for n in generate(8) if n not in self.agents)
-        closer = Agent(name=name, provider=next(self._provider_cycle), transient=True)
+        # the harness has no agent to ask, so a closer never spends a capable slot
+        closer = Agent(
+            name=name,
+            provider=next(self._provider_cycle),
+            level=Level.BALANCED,
+            transient=True,
+        )
         closer.task_id = task.id
         task.closer = name
         self.agents[name] = closer
@@ -450,8 +460,8 @@ class Orchestrator:
                 ),
             )
 
-    def context_window(self, provider: str) -> int:
-        found = self.providers.get(provider)
+    def context_window(self, agent: Agent) -> int:
+        found = self.providers.get(agent.provider, {}).get(agent.level)
         return found.context_window if found else 0
 
     def save(self) -> None:

@@ -13,6 +13,7 @@ import sys
 import time
 from pathlib import Path
 
+from panopticon.config import MIX
 from panopticon.model import (
     Agent,
     Entry,
@@ -107,8 +108,8 @@ class DemoHarness:
         self.force_ending = False
         self.started_at = time.time() - 4_237
 
-    def context_window(self, provider: str) -> int:
-        return WINDOWS.get(provider, 128_000)
+    def context_window(self, agent: Agent) -> int:
+        return WINDOWS.get(agent.provider, 128_000)
 
 
 def transcript(rng: random.Random, name: str, count: int, now: float) -> list[Entry]:
@@ -146,6 +147,7 @@ def build(rng: random.Random) -> DemoHarness:
         agent = Agent(
             name=name,
             provider=provider,
+            level=MIX[index % len(MIX)],
             situation=situation,
             born_at=now - rng.uniform(900, 4_200),
             turns=turns,

@@ -11,10 +11,10 @@ from panopticon import config as config_mod
 from panopticon import names
 from panopticon import store as store_mod
 from panopticon.config import Config
-from panopticon.model import Agent, Situation
+from panopticon.model import Agent, Level, Situation
 from panopticon.orchestrator import Orchestrator
 from panopticon.providers.base import Provider
-from panopticon.providers.registry import build
+from panopticon.providers.registry import build_levels
 from panopticon.services.worktrees import Worktrees
 from panopticon.store import STATE_DIRNAME, Store
 
@@ -28,6 +28,9 @@ def main(argv: list[str] | None = None) -> int:
     start = sub.add_parser("start", help="open a panopticon in this directory")
     start.add_argument("--goal")
     start.add_argument("--agents", type=int)
+    start.add_argument(
+        "--mix", help="levels to open with, e.g. fast=3,balanced=2,capable=1; sets the head count"
+    )
     start.add_argument("--headless", action="store_true")
     start.add_argument("--provider", action="append", help="restrict to these providers")
 
@@ -63,10 +66,26 @@ def _config(args: argparse.Namespace) -> int:
     for name, entry in cfg.providers.items():
         state = "on" if name in usable else ("off" if not entry.get("enabled") else "unusable")
         print(f"{state:9} {name:12} {entry['kind']:12} {entry.get('model', '')}")
+        levels = entry.get("levels") or {}
+        for level in Level:
+            overlay = levels.get(str(level)) or {}
+            settings = ", ".join(f"{k}={v}" for k, v in overlay.items()) or "as above"
+            print(f"{'':9} {'':12} {level:12} {settings}")
     for reason in skipped:
         print(f"  ! {reason}")
     print(f"\nconfig: {config_mod.CONFIG_FILE}")
     return 0
+
+
+def _mix(raw: str) -> dict[Level, int]:
+    """fast=3,balanced=2,capable=1. Raises ValueError on anything else."""
+    out: dict[Level, int] = {}
+    for part in raw.split(","):
+        name, _, count = part.partition("=")
+        out[Level(name.strip())] = int(count)
+    if any(n < 0 for n in out.values()) or not sum(out.values()):
+        raise ValueError("a mix needs at least one agent")
+    return out
 
 
 def _providers(cfg: Config, only: list[str] | None) -> tuple[dict, int]:
@@ -97,21 +116,36 @@ def _start(args: argparse.Namespace) -> int:
     if not goal:
         print("a panopticon needs a goal.", file=sys.stderr)
         return 1
-    count = args.agents or int(input(f"agents [{MIN_AGENTS}]: ").strip() or MIN_AGENTS)
+    mix = None
+    if args.mix:
+        try:
+            mix = _mix(args.mix)
+        except ValueError as exc:
+            levels = ", ".join(str(level) for level in Level)
+            print(f"bad --mix: {exc}. Levels are {levels}.", file=sys.stderr)
+            return 1
+        count = sum(mix.values())
+        if args.agents is not None and args.agents != count:
+            print(
+                f"--mix asks for {count} agents but --agents says {args.agents}.", file=sys.stderr
+            )
+            return 1
+    else:
+        count = args.agents or int(input(f"agents [{MIN_AGENTS}]: ").strip() or MIN_AGENTS)
     if count < MIN_AGENTS:
         print(f"at least {MIN_AGENTS} agents are needed for a jury.", file=sys.stderr)
         return 1
 
-    assigned = config_mod.spread(count, sorted(usable))
+    assigned = config_mod.spread(count, sorted(usable), mix)
     agents = [
-        Agent(name=name, provider=provider)
-        for name, provider in zip(names.generate(count), assigned, strict=True)
+        Agent(name=name, provider=provider, level=level)
+        for name, (provider, level) in zip(names.generate(count), assigned, strict=True)
     ]
     store = Store(cwd / STATE_DIRNAME)
     orch = Orchestrator(
         goal=goal,
         agents=agents,
-        providers={k: build(k, v) for k, v in usable.items()},
+        providers={k: build_levels(k, v) for k, v in usable.items()},
         store=store,
         worktrees=Worktrees(cwd, store.worktrees),
         config=cfg,
@@ -119,7 +153,9 @@ def _start(args: argparse.Namespace) -> int:
     return _run(orch, args.headless)
 
 
-def rebuild(store: Store, cfg: Config, providers: dict[str, Provider], repo: Path) -> Orchestrator:
+def rebuild(
+    store: Store, cfg: Config, providers: dict[str, dict[Level, Provider]], repo: Path
+) -> Orchestrator:
     """Put a saved panopticon back together. Shared by `resume` and its tests."""
     state = store.load()
     agents = [store_mod.restore_agent(a) for a in state["agents"]]
@@ -154,7 +190,7 @@ def _resume(args: argparse.Namespace) -> int:
     usable, code = _providers(cfg, wanted)
     if code:
         return code
-    orch = rebuild(store, cfg, {k: build(k, v) for k, v in usable.items()}, cwd)
+    orch = rebuild(store, cfg, {k: build_levels(k, v) for k, v in usable.items()}, cwd)
     return _run(orch, args.headless)
 
 

@@ -25,11 +25,13 @@ class CodexCLI:
         context_window: int = 272_000,
         timeout: float = _cli.DEFAULT_TIMEOUT,
         bin: str = "codex",
+        effort: str | None = None,
     ) -> None:
         self.context_window = context_window
         self.model = model
         self.timeout = timeout
         self.bin = bin
+        self.effort = effort
 
     def _argv(self, prompt: str, cwd: str | None, schema_path: str | None) -> list[str]:
         argv = [
@@ -46,6 +48,9 @@ class CodexCLI:
             "-m",
             self.model,
         ]
+        # -c takes TOML, so the quotes are part of the value; --ignore-user-config leaves it alone
+        if self.effort is not None:
+            argv += ["-c", f'model_reasoning_effort="{self.effort}"']
         if schema_path is not None:
             argv += ["--output-schema", schema_path]
         return [*argv, prompt]

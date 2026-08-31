@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from panopticon.model import Agent, Entry, QueueItem, Situation
+from panopticon.model import Agent, Entry, Level, QueueItem, Situation
 from panopticon.prompts import build_system_prompt, situation_preprompt
 from panopticon.tools import tools_for
 from tests.fakes import FakeHarness, seat_everyone
@@ -36,6 +36,21 @@ def test_the_system_prompt_is_byte_identical_while_only_the_transcript_moves(tmp
     h.board.create("Bo", "some task", "d", ["dev"])
 
     assert prompt(h, "Ada") == before
+
+
+def test_an_agent_is_told_its_own_level_and_what_the_three_mean(tmp_path):
+    h = harness(tmp_path)
+    h.agents["Ada"].level = Level.CAPABLE
+    text = prompt(h, "Ada")
+    assert "You run at the capable level." in text
+    assert "good at grunt work" in text
+    assert "Nobody hands out work by level" in text
+
+
+def test_a_closer_is_told_its_level_too(tmp_path):
+    h = harness(tmp_path)
+    h.agents["Zeb"] = Agent(name="Zeb", provider="fake", transient=True)
+    assert "You run at the balanced level." in prompt(h, "Zeb")
 
 
 def test_the_prompt_does_not_move_when_the_population_does(tmp_path):

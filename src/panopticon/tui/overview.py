@@ -70,7 +70,7 @@ class OverviewScreen(LiveScreen):
         )
         repaint_table(
             self.query_one("#agents", DataTable),
-            [(a.name, agent_row(a, app.context_window(a.provider), now)) for a in agents],
+            [(a.name, agent_row(a, app.context_window(a), now)) for a in agents],
         )
         repaint_table(self.query_one("#tasks", DataTable), self._task_rows(now))
         self.query_one("#state", Static).update(self._state(agents, now))

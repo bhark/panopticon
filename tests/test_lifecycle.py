@@ -15,7 +15,7 @@ import pytest
 
 from panopticon.cli import rebuild
 from panopticon.config import Config
-from panopticon.model import Action, Agent, QueueItem, Situation
+from panopticon.model import Action, Agent, Level, QueueItem, Situation
 from panopticon.orchestrator import Orchestrator
 from panopticon.providers.base import TurnRequest
 from panopticon.providers.mock import MockProvider
@@ -32,13 +32,18 @@ from tests.conftest import make_git_repo
 GOAL = "prove the harness closes a task and banks a truth"
 
 
+def engines(provider: MockProvider) -> dict[Level, MockProvider]:
+    """One instance behind every level, so a test reads all the calls off one object."""
+    return dict.fromkeys(Level, provider)
+
+
 def build(tmp_path: Path, policy) -> Orchestrator:
     repo = make_git_repo(tmp_path / "repo")
     store = Store(repo / STATE_DIRNAME)
     return Orchestrator(
         goal=GOAL,
         agents=[Agent(name=n, provider="mock") for n in ("Ada", "Bo", "Cy")],
-        providers={"mock": MockProvider(policy)},
+        providers={"mock": engines(MockProvider(policy))},
         store=store,
         worktrees=Worktrees(repo, store.worktrees),
         config=Config(),
@@ -237,7 +242,7 @@ async def test_resuming_a_settled_session_closes_without_spending_a_turn(tmp_pat
     orch = Orchestrator(
         goal=GOAL,
         agents=agents,
-        providers={"mock": provider},
+        providers={"mock": engines(provider)},
         store=store,
         worktrees=Worktrees(repo, store.worktrees),
         config=Config(),
@@ -266,7 +271,7 @@ async def test_a_run_paused_mid_task_resumes_and_finishes_the_job(tmp_path):
     second = rebuild(
         first.store,
         Config(),
-        {"mock": MockProvider(crowd)},
+        {"mock": engines(MockProvider(crowd))},
         first.worktrees.repo,
     )
     crowd.orch = second
