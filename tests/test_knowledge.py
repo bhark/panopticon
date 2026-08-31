@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from panopticon.model import VerdictCall
@@ -145,3 +147,17 @@ def test_renders_carry_what_an_agent_needs():
 
     assert "src/parse.py:31" in kb.render()
     assert kb.render_pending() == "jury queue: empty"
+
+
+def test_a_restored_knowledge_base_keeps_its_bar_and_its_id_sequence():
+    kb, first = submitted()
+    second = kb.submit("bo", "the suite needs PANOPTICON_HOME", "else it writes to the real home")
+    kb.join("ada", second.id)
+
+    revived = Knowledge()
+    revived.restore(json.loads(json.dumps(kb.snapshot())))
+
+    assert list(revived.pending) == [first, second.id]
+    with pytest.raises(ValueError, match="your own statement"):
+        revived.join("bo", second.id)
+    assert revived.submit("cy", "third", "proof").id == "s3"

@@ -176,13 +176,13 @@ async def test_a_paused_run_saves_a_state_file_that_restores(tmp_path):
     orch = build(tmp_path, crowd)
     crowd.orch = orch
     runner = asyncio.create_task(orch.run())
-    await asyncio.sleep(0.2)
+    await until(lambda: bool(orch.board.tasks))
     await orch.pause()
     await asyncio.wait_for(runner, timeout=5)
 
     state = orch.store.load()
     assert state["goal"] == GOAL
-    assert state["tasks"], "the run got far enough to have a task before pausing"
+    assert state["tasks"]
 
     restored = {a["name"]: restore_agent(dict(a)) for a in state["agents"]}
     for name, agent in restored.items():
@@ -191,7 +191,7 @@ async def test_a_paused_run_saves_a_state_file_that_restores(tmp_path):
         assert agent.turns == live.turns
         assert [e.text for e in agent.entries] == [e.text for e in live.entries]
 
-    tasks = [restore_task(dict(raw)) for raw in state["tasks"]]
+    tasks = [restore_task(dict(raw)) for raw in state["board"]]
     assert [t.id for t in tasks] == [t.id for t in orch.board.tasks.values()]
     assert [s.holder for s in tasks[0].seats] == [
         s.holder for s in next(iter(orch.board.tasks.values())).seats
