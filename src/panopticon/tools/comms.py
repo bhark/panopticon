@@ -36,7 +36,6 @@ async def send_direct_message(ctx: ToolCtx, args: dict[str, Any]) -> ActionResul
     body = args["body"].strip()
     if not body:
         return ActionResult.fail("body must not be empty.")
-    harness.bus.send_direct(agent.name, recipient.name, body)
     harness.post(recipient.name, QueueItem("dm", f"{agent.name} wrote to you: {body}"))
     return ActionResult(True, f"Sent to {recipient.name}.")
 

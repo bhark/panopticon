@@ -31,8 +31,6 @@ MAX_COMPACTION_FAILURES = 3
 _TAG_WIDTH = 10
 _CHARS_PER_TOKEN = 4
 
-_failures: dict[str, int] = {}
-
 
 # append
 
@@ -60,7 +58,7 @@ def reset(agent: Agent, preprompt: str) -> None:
     agent.entries = [Entry(kind="note", text=preprompt, turn=agent.turns)]
     agent.usage.context_tokens = 0
     agent.usage.measured_entries = 0
-    _failures.pop(agent.name, None)
+    agent.compaction_failures = 0
 
 
 # render
@@ -144,7 +142,7 @@ def needs_compaction(agent: Agent, provider: Provider) -> bool:
 
 async def compact(agent: Agent, provider: Provider, system: str) -> bool:
     """Replace the transcript prefix with one summary entry. False if it did not happen."""
-    if _failures.get(agent.name, 0) >= MAX_COMPACTION_FAILURES:
+    if agent.compaction_failures >= MAX_COMPACTION_FAILURES:
         return False
     cut = _cut_point(agent.entries)
     if cut <= 0:
@@ -155,13 +153,13 @@ async def compact(agent: Agent, provider: Provider, system: str) -> bool:
         _COMPACT_PROMPT.format(transcript="\n".join(head)),
     )
     if not summary:
-        _failures[agent.name] = _failures.get(agent.name, 0) + 1
+        agent.compaction_failures += 1
         return False
     kept = agent.entries[cut:]
     agent.entries = [Entry(kind="summary", text=summary.strip(), turn=agent.turns), *kept]
     agent.usage.context_tokens = 0
     agent.usage.measured_entries = 0
-    _failures.pop(agent.name, None)
+    agent.compaction_failures = 0
     return True
 
 

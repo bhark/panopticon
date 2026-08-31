@@ -45,11 +45,9 @@ async def test_a_quiet_bus_never_flushes():
     bus, fired = fast_bus()
     runner = asyncio.create_task(bus.run())
 
-    bus.send_direct("ada", "bo", "just for you")
     await asyncio.sleep(DEBOUNCE * 2)
 
     assert fired == []
-    assert bus.direct[0].recipient == "bo"
     runner.cancel()
     await asyncio.gather(runner, return_exceptions=True)
 

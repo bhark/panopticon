@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import os
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
 CONFIG_DIR = Path(os.environ.get("PANOPTICON_HOME", Path.home() / ".panopticon"))
@@ -42,9 +43,8 @@ DEFAULTS: dict[str, dict] = {
 
 @dataclass(slots=True)
 class Config:
-    providers: dict[str, dict] = field(default_factory=lambda: json.loads(json.dumps(DEFAULTS)))
+    providers: dict[str, dict] = field(default_factory=lambda: copy.deepcopy(DEFAULTS))
     max_concurrent_turns: int = 6
-    turn_timeout_seconds: int = 180
 
     def enabled(self) -> dict[str, dict]:
         return {k: v for k, v in self.providers.items() if v.get("enabled")}
@@ -65,7 +65,8 @@ def load() -> Config:
     if not CONFIG_FILE.exists():
         return Config()
     data = json.loads(CONFIG_FILE.read_text())
-    cfg = Config(**data)
+    known = {f.name for f in fields(Config)}  # a setting a later version dropped must not raise
+    cfg = Config(**{k: v for k, v in data.items() if k in known})
     # a provider added in a later version is missing from an older config file
     for key, default in DEFAULTS.items():
         cfg.providers.setdefault(key, dict(default))

@@ -136,11 +136,7 @@ class FakeKnowledge:
 
 class FakeBus:
     def __init__(self) -> None:
-        self.direct: list[tuple[str, str, str]] = []
         self.shouts: list[tuple[str, str]] = []
-
-    def send_direct(self, sender: str, recipient: str, body: str) -> None:
-        self.direct.append((sender, recipient, body))
 
     def shout(self, sender: str, body: str) -> None:
         self.shouts.append((sender, body))
@@ -260,8 +256,10 @@ class FakeHarness:
     def retire(self, agent: Agent) -> None:
         self.retired.append(agent.name)
 
-    def tally_goal(self) -> None:
+    def tally_goal(self) -> tuple[int, int]:
         self.tallies += 1
+        counted = [a for a in self.agents.values() if a.counts_toward_goal]
+        return sum(1 for a in counted if a.voted_goal_reached), len(counted)
 
     # helpers the tests lean on
 

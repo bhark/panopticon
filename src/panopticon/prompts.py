@@ -116,17 +116,8 @@ def _render_tools(tools: list[ToolSpec]) -> str:
     return "\n\n".join(out)
 
 
-def situation_preprompt(
-    agent: Agent,
-    harness: Harness,
-    note: str = "",
-    situation: Situation | None = None,
-) -> str:
-    """The deterministic opening line of a freshly cleared transcript.
-
-    `situation` is where the agent is landing; it defaults to where the agent already is.
-    """
-    dest = situation or agent.situation
+def situation_preprompt(agent: Agent, harness: Harness, note: str, dest: Situation) -> str:
+    """The deterministic opening line of a freshly cleared transcript."""
     if dest is Situation.ON_TASK:
         return _on_task(agent, harness, note)
     if dest is Situation.JURY:

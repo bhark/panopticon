@@ -173,14 +173,6 @@ class Submission:
 
 
 @dataclass(slots=True)
-class DirectMessage:
-    sender: str
-    recipient: str
-    body: str
-    at: float = field(default_factory=time.time)
-
-
-@dataclass(slots=True)
 class Shout:
     sender: str
     body: str
@@ -204,6 +196,7 @@ class Agent:
     voted_goal_reached: bool = False
     transient: bool = False  # task closer; excluded from vote tally and jury minimum
     consecutive_failures: int = 0
+    compaction_failures: int = 0
     last_action: str = ""
     entries: list[Entry] = field(default_factory=list)
     usage: Usage = field(default_factory=Usage)
@@ -234,12 +227,15 @@ class Harness(Protocol):
     """What a tool handler is allowed to reach. Implemented by the orchestrator."""
 
     goal: str
+    started_at: float
     agents: dict[str, Agent]
     board: TaskBoard
     bus: Bus
     kb: Knowledge
     worktrees: Worktrees
     force_ending: bool
+
+    def context_window(self, provider: str) -> int: ...
 
     def post(self, recipient: str, item: QueueItem) -> None: ...
 
@@ -273,8 +269,8 @@ class Harness(Protocol):
         """End an agent's loop: a transient closer that is done, or a relieved agent."""
         ...
 
-    def tally_goal(self) -> None:
-        """Recount goal-reached votes and end the session if they are unanimous."""
+    def tally_goal(self) -> tuple[int, int]:
+        """Recount, end the session if unanimous, and report (voted, counted)."""
         ...
 
 

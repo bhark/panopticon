@@ -7,7 +7,7 @@ import time
 from collections.abc import Callable
 
 from panopticon import store
-from panopticon.model import DirectMessage, Shout
+from panopticon.model import Shout
 
 
 class Bus:
@@ -17,16 +17,10 @@ class Bus:
 
     def __init__(self, flush: Callable[[list[str]], None]) -> None:
         """`flush` is called with the sender names once a shout burst settles."""
-        self.direct: list[DirectMessage] = []
         self.shouts: list[Shout] = []
         self._flush = flush
         self._batch: list[str] = []
         self._shouted = asyncio.Event()
-
-    def send_direct(self, sender: str, recipient: str, body: str) -> DirectMessage:
-        message = DirectMessage(sender=sender, recipient=recipient, body=body)
-        self.direct.append(message)
-        return message
 
     def shout(self, sender: str, body: str) -> Shout:
         shout = Shout(sender=sender, body=body)

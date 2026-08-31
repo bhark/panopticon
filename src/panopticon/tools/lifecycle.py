@@ -36,12 +36,10 @@ async def vote_goal_reached(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
         ),
         exclude=(agent.name,),
     )
-    voters = [a for a in harness.agents.values() if a.counts_toward_goal]
-    counted = sum(1 for a in voters if a.voted_goal_reached)
-    harness.tally_goal()
+    voted, counted = harness.tally_goal()
     return ActionResult(
         True,
-        f"Your vote is counted ({counted} of {len(voters)}). You are released and out of the "
+        f"Your vote is counted ({voted} of {counted}). You are released and out of the "
         f"work until you rejoin.",
     )
 

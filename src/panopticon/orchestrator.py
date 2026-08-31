@@ -363,14 +363,15 @@ class Orchestrator:
         self.emit(Event("agent", f"{agent.name} left the panopticon", agent.name))
         self.tally_goal()
 
-    def tally_goal(self) -> None:
+    def tally_goal(self) -> tuple[int, int]:
+        """Recount, close the session if the vote is unanimous, and report (voted, counted)."""
         counted = [a for a in self.agents.values() if a.counts_toward_goal]
+        voted = sum(1 for a in counted if a.voted_goal_reached)
         if not counted:
             self.stop("every agent is gone")
-            return
+            return voted, 0
         settled = all(a.situation in (Situation.RELEASED, Situation.RELIEVED) for a in counted)
         if settled:
-            voted = sum(1 for a in counted if a.voted_goal_reached)
             reason = f"goal reached ({voted} of {len(counted)} voted)"
             still_closing = [
                 a.name for a in self.agents.values() if a.situation is Situation.CLOSING_TASK
@@ -378,6 +379,7 @@ class Orchestrator:
             if still_closing:
                 reason += f"; {', '.join(still_closing)} had not finished integrating"
             self.stop(reason)
+        return voted, len(counted)
 
     def leave_task(self, name: str, task: Task, why: str, notify: bool = True) -> None:
         was_running = task.running

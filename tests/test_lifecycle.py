@@ -20,12 +20,12 @@ from panopticon.model import Action, Agent, QueueItem, Situation
 from panopticon.orchestrator import Orchestrator
 from panopticon.providers.base import TurnRequest
 from panopticon.providers.mock import MockProvider
+from panopticon.services.taskboard import TaskBoard
 from panopticon.services.worktrees import Worktrees
 from panopticon.store import (
     STATE_DIRNAME,
     Store,
     restore_agent,
-    restore_task,
     snapshot,
 )
 
@@ -182,7 +182,7 @@ async def test_a_paused_run_saves_a_state_file_that_restores(tmp_path):
 
     state = orch.store.load()
     assert state["goal"] == GOAL
-    assert state["tasks"]
+    assert state["board"]
 
     restored = {a["name"]: restore_agent(dict(a)) for a in state["agents"]}
     for name, agent in restored.items():
@@ -191,11 +191,14 @@ async def test_a_paused_run_saves_a_state_file_that_restores(tmp_path):
         assert agent.turns == live.turns
         assert [e.text for e in agent.entries] == [e.text for e in live.entries]
 
-    tasks = [restore_task(dict(raw)) for raw in state["board"]]
-    assert [t.id for t in tasks] == [t.id for t in orch.board.tasks.values()]
-    assert [s.holder for s in tasks[0].seats] == [
-        s.holder for s in next(iter(orch.board.tasks.values())).seats
-    ]
+    board = TaskBoard()
+    board.restore(state["board"])
+    assert [t.id for t in board.tasks.values()] == [t.id for t in orch.board.tasks.values()]
+    for restored_task, live_task in zip(
+        board.tasks.values(), orch.board.tasks.values(), strict=True
+    ):
+        assert [s.holder for s in restored_task.seats] == [s.holder for s in live_task.seats]
+        assert restored_task.started_at == live_task.started_at
 
 
 def test_an_undelivered_inbox_survives_the_snapshot(tmp_path):

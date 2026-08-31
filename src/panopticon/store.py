@@ -14,6 +14,7 @@ from panopticon.model import (
     Entry,
     Event,
     Finalization,
+    Harness,
     QueueItem,
     Seat,
     Situation,
@@ -89,7 +90,7 @@ class Store:
         return json.loads(self.state_file.read_text())
 
 
-def snapshot(harness: Any) -> dict[str, Any]:
+def snapshot(harness: Harness) -> dict[str, Any]:
     return {
         "version": 2,
         "goal": harness.goal,
