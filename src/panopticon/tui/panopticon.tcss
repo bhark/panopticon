@@ -109,6 +109,71 @@ DataTable > .datatable--cursor {
     padding: 1;
 }
 
+/* launch */
+
+LaunchScreen {
+    align: center middle;
+    background: $background;
+}
+
+#launchdialog {
+    width: 76;
+    height: auto;
+    padding: 1 2;
+    background: $surface;
+    border: round $primary;
+    border-title-align: left;
+    border-title-color: $primary;
+    border-title-style: bold;
+}
+
+#launchroster {
+    height: auto;
+    margin-top: 1;
+    align-vertical: middle;
+}
+
+#rosterlabel {
+    width: 8;
+    padding-top: 1;
+}
+
+.levellabel {
+    width: auto;
+    padding: 1 1 0 2;
+}
+
+.levelcount {
+    width: 8;
+    background: $panel;
+    border: tall $panel;
+}
+
+.levelcount:focus {
+    border: tall $primary;
+}
+
+#goal {
+    background: $panel;
+    border: tall $primary;
+}
+
+#launchtally, #launchhint {
+    height: 1;
+    margin-top: 1;
+}
+
+#launchbuttons {
+    height: auto;
+    margin-top: 1;
+    align-horizontal: right;
+}
+
+#launchbuttons Button {
+    margin-left: 2;
+    min-width: 16;
+}
+
 /* dialogs */
 
 ShoutboxScreen, ConfirmScreen, HelpScreen {

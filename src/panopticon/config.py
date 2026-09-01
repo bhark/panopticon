@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+from collections import Counter
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
@@ -59,6 +60,8 @@ DEFAULTS: dict[str, dict] = {
 MIX = (Level.CAPABLE, Level.BALANCED, Level.FAST, Level.BALANCED, Level.FAST, Level.BALANCED)
 MIX_ORDER = (Level.CAPABLE, Level.BALANCED, Level.FAST)
 
+MIN_AGENTS = 3  # a truth needs two 'true' verdicts and cannot be judged by its submitter
+
 
 @dataclass(slots=True)
 class Config:
@@ -109,6 +112,12 @@ def spread(
     """
     levels = _deal(mix) if mix else [MIX[i % len(MIX)] for i in range(agent_count)]
     return [(providers[i % len(providers)], level) for i, level in enumerate(levels)]
+
+
+def roster(agent_count: int, mix: dict[Level, int] | None = None) -> dict[Level, int]:
+    """How many agents at each level, in the order they are offered."""
+    dealt = Counter(level for _, level in spread(agent_count, ["-"], mix))
+    return {level: dealt.get(level, 0) for level in MIX_ORDER}
 
 
 def _deal(mix: dict[Level, int]) -> list[Level]:

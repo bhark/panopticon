@@ -1,17 +1,18 @@
-"""panopticon start | resume | config | update"""
+"""panopticon | resume | config | update"""
 
 from __future__ import annotations
 
 import argparse
 import asyncio
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from panopticon import __version__, names
 from panopticon import config as config_mod
 from panopticon import store as store_mod
 from panopticon import update as update_mod
-from panopticon.config import Config
+from panopticon.config import MIN_AGENTS, Config
 from panopticon.model import Agent, Level, Situation
 from panopticon.orchestrator import Orchestrator
 from panopticon.providers.base import Provider
@@ -19,27 +20,26 @@ from panopticon.providers.registry import build_levels
 from panopticon.services.worktrees import Worktrees
 from panopticon.store import STATE_DIRNAME, Store
 
-MIN_AGENTS = 3  # a truth needs two 'true' verdicts and cannot be judged by its submitter
-
 
 def main(argv: list[str] | None = None) -> int:
     # child processes write to this same fd, so our own lines must not sit in a block buffer
     sys.stdout.reconfigure(line_buffering=True)
-    parser = argparse.ArgumentParser(prog="panopticon")
+    parser = argparse.ArgumentParser(
+        prog="panopticon", description="open a panopticon in this directory"
+    )
     parser.add_argument("--version", action="version", version=__version__)
-    sub = parser.add_subparsers(dest="command")
-
-    start = sub.add_parser("start", help="open a panopticon in this directory")
-    start.add_argument("--goal")
-    start.add_argument("--agents", type=int)
-    start.add_argument(
+    parser.add_argument("--goal")
+    parser.add_argument("--agents", type=int)
+    parser.add_argument(
         "--mix", help="levels to open with, e.g. fast=3,balanced=2,capable=1; sets the head count"
     )
-    start.add_argument("--headless", action="store_true")
-    start.add_argument("--provider", action="append", help="restrict to these providers")
+    parser.add_argument("--headless", action="store_true")
+    parser.add_argument("--provider", action="append", help="restrict to these providers")
+    sub = parser.add_subparsers(dest="command")
 
     resume = sub.add_parser("resume", help="reopen the panopticon saved here")
-    resume.add_argument("--headless", action="store_true")
+    # the same flag as above, so an absent one here must not overwrite what came before the command
+    resume.add_argument("--headless", action="store_true", default=argparse.SUPPRESS)
 
     cfg = sub.add_parser("config", help="inspect and change providers")
     cfg.add_argument("--list", action="store_true")
@@ -112,12 +112,27 @@ def _config(args: argparse.Namespace) -> int:
 def _mix(raw: str) -> dict[Level, int]:
     """fast=3,balanced=2,capable=1. Raises ValueError on anything else."""
     out: dict[Level, int] = {}
-    for part in raw.split(","):
-        name, _, count = part.partition("=")
-        out[Level(name.strip())] = int(count)
+    try:
+        for part in raw.split(","):
+            name, _, count = part.partition("=")
+            out[Level(name.strip())] = int(count)
+    except ValueError:
+        levels = ", ".join(str(level) for level in Level)
+        raise ValueError(f"bad --mix: {raw!r}. Levels are {levels}.") from None
     if any(n < 0 for n in out.values()) or not sum(out.values()):
         raise ValueError("a mix needs at least one agent")
     return out
+
+
+def _wanted(args: argparse.Namespace) -> dict[Level, int]:
+    """The roster the flags asked for; the interface asks for it when they did not."""
+    mix = _mix(args.mix) if args.mix else None
+    count = sum(mix.values()) if mix else (args.agents or MIN_AGENTS)
+    if mix and args.agents is not None and args.agents != count:
+        raise ValueError(f"--mix asks for {count} agents but --agents says {args.agents}.")
+    if (args.agents or args.mix) and count < MIN_AGENTS:
+        raise ValueError(f"at least {MIN_AGENTS} agents are needed for a jury.")
+    return config_mod.roster(count, mix)
 
 
 def _providers(cfg: Config, only: list[str] | None) -> tuple[dict, int]:
@@ -143,46 +158,42 @@ def _start(args: argparse.Namespace) -> int:
     usable, code = _providers(cfg, args.provider)
     if code:
         return code
-
-    goal = args.goal or input("goal: ").strip()
-    if not goal:
-        print("a panopticon needs a goal.", file=sys.stderr)
-        return 1
-    mix = None
-    if args.mix:
-        try:
-            mix = _mix(args.mix)
-        except ValueError as exc:
-            levels = ", ".join(str(level) for level in Level)
-            print(f"bad --mix: {exc}. Levels are {levels}.", file=sys.stderr)
-            return 1
-        count = sum(mix.values())
-        if args.agents is not None and args.agents != count:
-            print(
-                f"--mix asks for {count} agents but --agents says {args.agents}.", file=sys.stderr
-            )
-            return 1
-    else:
-        count = args.agents or int(input(f"agents [{MIN_AGENTS}]: ").strip() or MIN_AGENTS)
-    if count < MIN_AGENTS:
-        print(f"at least {MIN_AGENTS} agents are needed for a jury.", file=sys.stderr)
+    try:
+        wanted = _wanted(args)
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
         return 1
 
-    assigned = config_mod.spread(count, sorted(usable), mix)
-    agents = [
-        Agent(name=name, provider=provider, level=level)
-        for name, (provider, level) in zip(names.generate(count), assigned, strict=True)
-    ]
     store = Store(cwd / STATE_DIRNAME)
-    orch = Orchestrator(
-        goal=goal,
-        agents=agents,
-        providers={k: build_levels(k, v) for k, v in usable.items()},
-        store=store,
-        worktrees=Worktrees(cwd, store.worktrees),
-        config=cfg,
-    )
-    return _run(orch, args.headless)
+    providers = {k: build_levels(k, v) for k, v in usable.items()}
+
+    def build(goal: str, roster: dict[Level, int]) -> Orchestrator:
+        assigned = config_mod.spread(sum(roster.values()), sorted(usable), roster)
+        agents = [
+            Agent(name=name, provider=provider, level=level)
+            for name, (provider, level) in zip(names.generate(len(assigned)), assigned, strict=True)
+        ]
+        return Orchestrator(
+            goal=goal,
+            agents=agents,
+            providers=providers,
+            store=store,
+            worktrees=Worktrees(cwd, store.worktrees),
+            config=cfg,
+        )
+
+    def saved() -> Orchestrator:
+        return rebuild(store, cfg, providers, cwd)
+
+    if args.headless:
+        if not args.goal:
+            print("--headless needs a --goal; there is no interface to ask in.", file=sys.stderr)
+            return 1
+        return _run(build(args.goal, wanted), headless=True)
+    if args.goal:
+        return _run(build(args.goal, wanted))
+
+    return _ask(build, saved if store.exists() else None, wanted, sorted(usable))
 
 
 def rebuild(
@@ -223,13 +234,33 @@ def _resume(args: argparse.Namespace) -> int:
     if code:
         return code
     orch = rebuild(store, cfg, {k: build_levels(k, v) for k, v in usable.items()}, cwd)
-    return _run(orch, args.headless)
+    return _run(orch, headless=getattr(args, "headless", False))
 
 
-def _run(orch: Orchestrator, headless: bool) -> int:
-    asyncio.run(_headless(orch) if headless else _interactive(orch))
-    print(orch.stopped_because or "closed")
-    return _nudge(0) if headless else 0
+def _run(orch: Orchestrator, headless: bool = False) -> int:
+    if headless:
+        asyncio.run(_headless(orch))
+        print(orch.stopped_because or "closed")
+        return _nudge(0)
+    return _closed(asyncio.run(_interactive(orch)))
+
+
+def _ask(
+    build: Callable[[str, dict[Level, int]], Orchestrator],
+    saved: Callable[[], Orchestrator] | None,
+    roster: dict[Level, int],
+    providers: list[str],
+) -> int:
+    """Nothing is assembled yet: the interface asks for what the flags did not say."""
+    return _closed(
+        asyncio.run(_interactive(build=build, saved=saved, roster=roster, providers=providers))
+    )
+
+
+def _closed(opened: Orchestrator | None) -> int:
+    reason = opened.stopped_because if opened else ""
+    print(reason or "closed")
+    return 0
 
 
 async def _headless(orch: Orchestrator) -> None:
@@ -246,26 +277,57 @@ async def _drop(task: asyncio.Task) -> None:
     await asyncio.gather(task, return_exceptions=True)
 
 
-async def _interactive(orch: Orchestrator) -> None:
+async def _interactive(
+    ready: Orchestrator | None = None,
+    *,
+    build: Callable[[str, dict[Level, int]], Orchestrator] | None = None,
+    saved: Callable[[], Orchestrator] | None = None,
+    roster: dict[Level, int] | None = None,
+    providers: list[str] | None = None,
+) -> Orchestrator | None:
     from panopticon.tui.app import PanopticonApp
+    from panopticon.tui.launch import Launch
 
-    app = PanopticonApp(orch)
     side: set[asyncio.Task] = set()
+    live: list[Orchestrator] = []
 
-    def spawn(coro) -> None:
+    def spawn(coro) -> asyncio.Task:
         task = asyncio.create_task(coro)
         side.add(task)
         task.add_done_callback(side.discard)
+        return task
 
-    async def pause_then_exit() -> None:
+    async def pause_then_exit(orch: Orchestrator) -> None:
         await orch.pause()
         app.exit()
 
-    app.on_shout = orch.human_shout
-    app.human_name = orch.HUMAN
-    app.on_force_end = orch.force_end
-    app.on_pause = lambda: spawn(pause_then_exit())
-    orch.subscribers.append(app.harness_event)
+    async def close_when_done(runner: asyncio.Task) -> None:
+        await asyncio.gather(runner, return_exceptions=True)
+        app.exit()
+
+    def adopt(orch: Orchestrator) -> Orchestrator:
+        """Everything that only makes sense once there is something to watch."""
+        live.append(orch)
+        app.on_shout = orch.human_shout
+        app.human_name = orch.HUMAN
+        app.on_force_end = orch.force_end
+        app.on_pause = lambda: spawn(pause_then_exit(orch))
+        orch.subscribers.append(app.harness_event)
+        runner = spawn(orch.run())
+        spawn(close_when_done(runner))
+        return orch
+
+    launch = None
+    if build is not None:
+        launch = Launch(
+            roster=roster or {},
+            providers=providers or [],
+            open=lambda goal, picked: adopt(build(goal, picked)),
+            resume=(lambda: adopt(saved())) if saved else None,
+        )
+    app = PanopticonApp(launch=launch)
+    if ready is not None:
+        app.attach(adopt(ready))
 
     async def check_for_update() -> None:
         """Beside the harness, never before it - the interface opens on the cached answer."""
@@ -274,16 +336,11 @@ async def _interactive(orch: Orchestrator) -> None:
         app.paint.note()
 
     check = asyncio.create_task(check_for_update())
-    runner = asyncio.create_task(orch.run())
-
-    async def close_when_done() -> None:
-        await asyncio.gather(runner, return_exceptions=True)
-        app.exit()
-
-    spawn(close_when_done())
     try:
         await app.run_async()
     finally:
-        orch.stop("the human closed the interface")
+        for orch in live:
+            orch.stop("the human closed the interface")
         await _drop(check)
-        await asyncio.gather(runner, *side, return_exceptions=True)
+        await asyncio.gather(*side, return_exceptions=True)
+    return live[-1] if live else None

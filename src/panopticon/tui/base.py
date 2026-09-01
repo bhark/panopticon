@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import contextlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from rich.text import Text
+from textual.binding import Binding, BindingType
 from textual.screen import Screen
 from textual.widgets import DataTable
 from textual.widgets.data_table import CellDoesNotExist, RowDoesNotExist
@@ -16,6 +17,16 @@ if TYPE_CHECKING:
 
 
 class LiveScreen(Screen[None]):
+    # every one of these reads or pokes the harness, so they hang off the screens that have one
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("s", "app.shout", "shout"),
+        Binding("k", "app.knowledge", "knowledge"),
+        Binding("p", "app.pause", "pause"),
+        Binding("f", "app.force_end", "force end"),
+        Binding("question_mark", "app.help", "help", key_display="?"),
+        Binding("q", "app.leave", "quit"),
+    ]
+
     @property
     def harness(self) -> Harness:
         app: PanopticonApp = self.app  # type: ignore[assignment]

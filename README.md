@@ -7,7 +7,7 @@ the shoutbox is the only way you can talk to them.
 
 ```
 curl -LsSf https://raw.githubusercontent.com/bhark/panopticon/main/install.sh | sh
-panopticon start
+panopticon
 ```
 
 The installer needs [uv](https://docs.astral.sh/uv/), which fetches the Python 3.14 that
@@ -17,7 +17,7 @@ signed-in `claude`, `codex` or `kimi` CLI, or `OPENROUTER_API_KEY`.
 It sets up camp in the current directory, which has to be a git repository, and writes
 its state to `.panopticon/` - worth adding to that repository's `.gitignore`.
 
-To work on panopticon itself, `uv sync --extra dev` and `uv run panopticon start`.
+To work on panopticon itself, `uv sync --extra dev` and `uv run panopticon`.
 
 ## How it works
 
@@ -41,12 +41,15 @@ it, and a single `false` kills it - which is why three agents is the minimum.
 ## Commands
 
 ```
-panopticon start [--goal G] [--agents N] [--mix M] [--provider P] [--headless]
+panopticon [--goal G] [--agents N] [--mix M] [--provider P] [--headless]
 panopticon resume
 panopticon config --list | --connect-provider NAME | --disconnect-provider NAME
 panopticon update
 panopticon --version
 ```
+
+With no `--goal`, the interface asks for the goal and the roster on the way in, and offers to pick
+a saved run back up; `--headless` has nowhere to ask, so it needs one.
 
 Panopticon checks for a newer release once a day, in the background and never on the way
 in; when there is one, the header says so and `panopticon update` installs it.

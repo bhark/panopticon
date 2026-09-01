@@ -12,10 +12,8 @@ from __future__ import annotations
 import time
 from collections import deque
 from collections.abc import Callable
-from typing import ClassVar
 
 from textual.app import App
-from textual.binding import Binding, BindingType
 from textual.screen import Screen
 from textual.theme import Theme
 
@@ -24,6 +22,7 @@ from panopticon.model import Agent, Event, Harness
 from panopticon.tui.dialogs import ConfirmScreen, HelpScreen, ShoutboxScreen
 from panopticon.tui.format import Coalescer
 from panopticon.tui.knowledge import KnowledgeScreen
+from panopticon.tui.launch import Launch, LaunchScreen
 from panopticon.tui.overview import OverviewScreen
 
 EVENT_LOG = 300
@@ -49,30 +48,34 @@ class PanopticonApp(App[None]):
     CSS_PATH = "panopticon.tcss"
     TITLE = "panopticon"
 
-    BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("s", "shout", "shout"),
-        Binding("k", "knowledge", "knowledge"),
-        Binding("p", "pause", "pause"),
-        Binding("f", "force_end", "force end"),
-        Binding("question_mark", "help", "help", key_display="?"),
-        Binding("q", "leave", "quit"),
-    ]
+    harness: Harness  # set by attach, before any screen that reads it can exist
 
-    def __init__(self, harness: Harness) -> None:
+    def __init__(self, harness: Harness | None = None, *, launch: Launch | None = None) -> None:
         super().__init__()
-        self.harness = harness
+        self.launch = launch
         self.on_shout: Callable[[str], None] = lambda body: None
         self.on_pause: Callable[[], None] = lambda: None
         self.on_force_end: Callable[[], None] = lambda: None
         self.human_name = "human"
-        self.started_at = harness.started_at
         self.events: deque[Event] = deque(maxlen=EVENT_LOG)
         self.paint = Coalescer()
         self.pausing = False
         self.update_note = update_mod.note()  # cache only; the refresh task sets it again
+        if harness is not None:
+            self.attach(harness)
 
     def get_default_screen(self) -> Screen[None]:
-        return OverviewScreen()
+        return LaunchScreen() if self.launch is not None else OverviewScreen()
+
+    def attach(self, harness: Harness) -> None:
+        self.harness = harness
+        self.started_at = harness.started_at
+        self.launch = None
+
+    def show(self, harness: Harness) -> None:
+        """What the launch screen opened, whether it is new or picked back up."""
+        self.attach(harness)
+        self.push_screen(OverviewScreen())  # the launch screen is the base one, never swapped
 
     def on_mount(self) -> None:
         self.register_theme(PANOPTICON_THEME)
@@ -99,7 +102,8 @@ class PanopticonApp(App[None]):
         return ""
 
     def _paint(self) -> None:
-        if not self.paint.due(time.monotonic()):
+        # a tick can land on a screen that is pushed but not mounted, with nothing to paint into
+        if not self.screen.is_mounted or not self.paint.due(time.monotonic()):
             return
         refresh = getattr(self.screen, "refresh_data", None)
         if callable(refresh):
