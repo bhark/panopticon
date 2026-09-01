@@ -33,7 +33,7 @@ EVENT_TAIL = 40
 class OverviewScreen(LiveScreen):
     def compose(self) -> ComposeResult:
         yield Static(id="goalbar")
-        yield DataTable(id="agents", cursor_type="row", zebra_stripes=True)
+        yield DataTable(id="agents", cursor_type="row")
         with Horizontal(id="lower"):
             yield DataTable(id="tasks", cursor_type="row")
             with Vertical(id="right"):

@@ -47,10 +47,10 @@ AGENT_COLUMNS = (
 )
 
 TASK_COLUMNS = (
-    ("task", 30),
+    ("task", 28),
     ("seats", 6),
     ("state", 16),
-    ("holders", 22),
+    ("holders", 21),
     ("age", 7),
 )
 
@@ -91,10 +91,10 @@ def task_row(task: Task, now: float) -> list[Text]:
     filled = len(task.holders)
     holders = ", ".join(task.holders) or "-"
     return [
-        Text(clip(task.title, 30), style=INK if not task.archived_at else FAINT),
+        Text(clip(task.title, 28), style=INK if not task.archived_at else FAINT),
         Text(f"{filled}/{len(task.seats)}", style=DIM, justify="right"),
         Text(label, style=style),
-        Text(clip(holders, 22), style=DIM),
+        Text(clip(holders, 21), style=DIM),
         Text(since(task.created_at, now), style=DIM, justify="right"),
     ]
 
@@ -267,7 +267,7 @@ def goal_bar(goal: str, started_at: float, agents: list[Agent], flag: str, updat
     now = time.time()
     live = sum(1 for a in agents if a.alive)
     released = sum(1 for a in agents if a.voted_goal_reached)
-    line = Text("PANOPTICON", style=f"bold {ACCENT}")
+    line = Text("panopticon", style=f"bold {ACCENT}")
     line.append("  ")
     line.append(oneline(goal, 160), style=f"bold {INK}")
     line.append(f"   {since(started_at, now)}", style=DIM)

@@ -62,13 +62,14 @@ class LaunchScreen(Screen[None]):
                             type="integer",
                             id=f"n-{index}-{level}",
                             classes="levelcount",
+                            compact=True,
                         )
             yield Static(id="launchtally")
             yield Static(id="launchhint")
             with Horizontal(id="launchbuttons"):
                 if self.launch.resume:
-                    yield Button("resume the saved run", id="resume")
-                yield Button("open  (enter)", id="open", variant="primary")
+                    yield Button("resume saved run", id="resume", compact=True)
+                yield Button("open", id="open", variant="primary", compact=True)
 
     def on_mount(self) -> None:
         self.query_one("#launchdialog").border_title = "panopticon"
@@ -83,7 +84,7 @@ class LaunchScreen(Screen[None]):
         )
         note = self.panopticon.update_note
         self.query_one("#launchhint", Static).update(
-            Text(note or "escape quits", style=AMBER if note else FAINT)
+            Text(note or "enter opens · escape quits", style=AMBER if note else FAINT)
         )
 
     def on_input_changed(self) -> None:

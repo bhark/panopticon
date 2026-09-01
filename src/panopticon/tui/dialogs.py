@@ -85,9 +85,12 @@ class ConfirmScreen(ModalScreen[bool]):
         with Vertical(id="confirmdialog"):
             yield Static(Text(self.question, style=f"bold {INK}"), id="confirmquestion")
             yield Static(Text(self.detail, style=DIM), id="confirmdetail")
+            yield Static(
+                Text("y confirms · n cancels · escape closes", style=FAINT), id="confirmhint"
+            )
             with Horizontal(id="confirmbuttons"):
-                yield Button("cancel  (n)", id="cancel")
-                yield Button("confirm  (y)", id="confirm", variant="warning")
+                yield Button("cancel", id="cancel", compact=True)
+                yield Button("confirm", id="confirm", variant="warning", compact=True)
 
     def on_mount(self) -> None:
         self.query_one("#confirmdialog").border_title = self.dialog_title

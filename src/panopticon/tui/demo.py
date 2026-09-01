@@ -1,6 +1,6 @@
 """A fake, populated harness so the interface can be built and reviewed without a run.
 
-    uv run python -m panopticon.tui.demo [--still]
+    uv run python -m panopticon.tui.demo [--still] [--launch]
 
 Everything here is throwaway scaffolding; nothing else imports it.
 """
@@ -19,6 +19,7 @@ from panopticon.model import (
     Entry,
     Event,
     Finalization,
+    Level,
     QueueItem,
     Seat,
     Shout,
@@ -35,6 +36,7 @@ from panopticon.services.knowledge import Knowledge
 from panopticon.services.taskboard import TaskBoard
 from panopticon.services.worktrees import Worktrees
 from panopticon.tui.app import PanopticonApp
+from panopticon.tui.launch import Launch
 
 GOAL = "make panopticon resume a killed run without losing a single transcript"
 
@@ -68,6 +70,8 @@ ROSTER = [
     ("Kes", "codex-cli", Situation.RELEASED),
     ("Lumo", "openrouter:deepseek-v3", Situation.DEAD),
 ]
+
+PROVIDERS = ["claude-code", "codex-cli", "kimi-cli"]
 
 ACTIONS = [
     "view_task_board",
@@ -421,6 +425,15 @@ async def simulate(app: PanopticonApp, harness: DemoHarness, rng: random.Random)
 async def main() -> None:
     rng = random.Random(7)
     harness = build(rng)
+    if "--launch" in sys.argv:
+        launch = Launch(
+            roster={(provider, level): 1 for provider in PROVIDERS for level in Level},
+            providers=PROVIDERS,
+            open=lambda goal, roster: harness,
+            resume=lambda: harness,
+        )
+        await PanopticonApp(launch=launch).run_async()
+        return
     app = PanopticonApp(harness)
 
     def shout(body: str) -> None:

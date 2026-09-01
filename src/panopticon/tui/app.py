@@ -38,9 +38,16 @@ PANOPTICON_THEME = Theme(
     success="#7fd88f",
     foreground="#c8d0da",
     background="#0e1116",
-    surface="#141920",
-    panel="#1b2129",
+    surface="#0e1116",
+    panel="#232a33",
     dark=True,
+    # the footer and unfocused fields default to a panel-coloured strip; the board is flat
+    variables={
+        "footer-background": "#0e1116",
+        "footer-key-foreground": "#4fd6be",
+        "footer-description-foreground": "#6b7785",
+        "border-blurred": "#232a33",
+    },
 )
 
 
