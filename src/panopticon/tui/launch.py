@@ -9,11 +9,11 @@ from typing import TYPE_CHECKING, ClassVar
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
-from textual.containers import Horizontal, Vertical
+from textual.containers import Grid, Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Button, Input, Static
 
-from panopticon.config import MIN_AGENTS
+from panopticon.config import MIN_AGENTS, Pick
 from panopticon.model import Harness, Level
 from panopticon.tui.format import AMBER, DIM, FAINT
 
@@ -25,9 +25,9 @@ if TYPE_CHECKING:
 class Launch:
     """What the interface needs to open a panopticon of its own."""
 
-    roster: dict[Level, int]
+    roster: dict[Pick, int]
     providers: list[str]
-    open: Callable[[str, dict[Level, int]], Harness]
+    open: Callable[[str, dict[Pick, int]], Harness]
     resume: Callable[[], Harness] | None = None
 
 
@@ -48,11 +48,21 @@ class LaunchScreen(Screen[None]):
         with Vertical(id="launchdialog"):
             yield Static(Text("goal", style=FAINT))
             yield Input(placeholder="what should they work toward?", id="goal")
-            with Horizontal(id="launchroster"):
-                yield Static(Text("roster", style=FAINT), id="rosterlabel")
-                for level, count in self.launch.roster.items():
+            yield Static(Text("roster", style=FAINT), id="rosterlabel")
+            with Grid(id="launchroster"):
+                yield Static("")
+                for level in Level:
                     yield Static(Text(str(level), style=DIM), classes="levellabel")
-                    yield Input(str(count), type="integer", id=f"n-{level}", classes="levelcount")
+                for index, provider in enumerate(self.launch.providers):
+                    yield Static(Text(provider, style=DIM), classes="providerlabel")
+                    for level in Level:
+                        count = self.launch.roster.get((provider, level), 0)
+                        yield Input(
+                            str(count),
+                            type="integer",
+                            id=f"n-{index}-{level}",
+                            classes="levelcount",
+                        )
             yield Static(id="launchtally")
             yield Static(id="launchhint")
             with Horizontal(id="launchbuttons"):
@@ -66,10 +76,10 @@ class LaunchScreen(Screen[None]):
         self.refresh_data()
 
     def refresh_data(self) -> None:
-        count = sum(self._roster().values())
-        across = ", ".join(self.launch.providers)
+        roster = self._roster()
+        across = ", ".join(sorted({provider for provider, _ in roster}))
         self.query_one("#launchtally", Static).update(
-            Text(f"{count} agents across {across}", style=DIM)
+            Text(f"{sum(roster.values())} agents across {across or 'nothing yet'}", style=DIM)
         )
         note = self.panopticon.update_note
         self.query_one("#launchhint", Static).update(
@@ -88,11 +98,16 @@ class LaunchScreen(Screen[None]):
         else:
             self._open()
 
-    def _roster(self) -> dict[Level, int]:
-        return {level: self._count(level) for level in self.launch.roster}
+    def _roster(self) -> dict[Pick, int]:
+        picked = {}
+        for index, provider in enumerate(self.launch.providers):
+            for level in Level:
+                if count := self._count(f"n-{index}-{level}"):
+                    picked[provider, level] = count
+        return picked
 
-    def _count(self, level: Level) -> int:
-        raw = self.query_one(f"#n-{level}", Input).value.strip()
+    def _count(self, widget_id: str) -> int:
+        raw = self.query_one(f"#{widget_id}", Input).value.strip()
         return max(0, int(raw)) if raw.lstrip("-").isdigit() else 0
 
     def _open(self) -> None:

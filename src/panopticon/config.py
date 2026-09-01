@@ -5,7 +5,6 @@ from __future__ import annotations
 import copy
 import json
 import os
-from collections import Counter
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
@@ -62,6 +61,9 @@ MIX_ORDER = (Level.CAPABLE, Level.BALANCED, Level.FAST)
 
 MIN_AGENTS = 3  # a truth needs two 'true' verdicts and cannot be judged by its submitter
 
+Pick = tuple[str, Level]  # a provider entry and the level it runs at
+Wanted = tuple[str | None, Level]  # a pick, or a level with the provider still open
+
 
 @dataclass(slots=True)
 class Config:
@@ -102,31 +104,45 @@ def save(cfg: Config) -> None:
     CONFIG_FILE.write_text(json.dumps(asdict(cfg), indent=2) + "\n")
 
 
-def spread(
-    agent_count: int, providers: list[str], mix: dict[Level, int] | None = None
-) -> list[tuple[str, Level]]:
-    """One provider and one level per agent: providers round-robin, levels follow the mix.
+def roster(
+    agent_count: int, providers: list[str], mix: dict[Wanted, int] | None = None
+) -> dict[Pick, int]:
+    """How many agents on each provider and level.
 
-    The two cycles are independent, so a small roster can leave a provider off a level.
-    That is what --mix is for.
+    Without a mix, levels follow MIX and providers go round-robin, so a small roster can
+    leave a provider off a level. That is what a mix is for; entries in it that name no
+    provider still go round-robin.
     """
-    levels = _deal(mix) if mix else [MIX[i % len(MIX)] for i in range(agent_count)]
-    return [(providers[i % len(providers)], level) for i, level in enumerate(levels)]
-
-
-def roster(agent_count: int, mix: dict[Level, int] | None = None) -> dict[Level, int]:
-    """How many agents at each level, in the order they are offered."""
-    dealt = Counter(level for _, level in spread(agent_count, ["-"], mix))
-    return {level: dealt.get(level, 0) for level in MIX_ORDER}
-
-
-def _deal(mix: dict[Level, int]) -> list[Level]:
-    """An explicit mix, interleaved rather than grouped, so it does not line up with a provider."""
-    left = {level: mix.get(level, 0) for level in MIX_ORDER}
-    out: list[Level] = []
-    while any(count > 0 for count in left.values()):
-        for level in MIX_ORDER:
-            if left[level] > 0:
-                out.append(level)
-                left[level] -= 1
+    wanted = _deal(mix) if mix else [(None, MIX[i % len(MIX)]) for i in range(agent_count)]
+    out: dict[Pick, int] = {}
+    turn = 0
+    for named, level in wanted:
+        provider = named
+        if provider is None:
+            provider = providers[turn % len(providers)]
+            turn += 1
+        out[provider, level] = out.get((provider, level), 0) + 1
     return out
+
+
+def deal(picked: dict[Pick, int]) -> list[Pick]:
+    """One entry per agent."""
+    return [pick for pick, count in picked.items() for _ in range(count)]
+
+
+def _deal(mix: dict[Wanted, int]) -> list[Wanted]:
+    """An explicit mix, interleaved rather than grouped, so it does not line up with a provider."""
+    left = {key: count for key, count in sorted(mix.items(), key=_order) if count > 0}
+    out: list[Wanted] = []
+    while left:
+        for key in list(left):
+            out.append(key)
+            left[key] -= 1
+            if not left[key]:
+                del left[key]
+    return out
+
+
+def _order(item: tuple[Wanted, int]) -> tuple[int, str]:
+    (provider, level), _ = item
+    return MIX_ORDER.index(level), provider or ""

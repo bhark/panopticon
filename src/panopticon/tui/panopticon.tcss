@@ -130,27 +130,34 @@ LaunchScreen {
 #launchroster {
     height: auto;
     margin-top: 1;
-    align-vertical: middle;
+    grid-size: 4;
+    grid-columns: 14 9 9 9;
+    grid-rows: 1;
+    grid-gutter: 0 1;
 }
 
 #rosterlabel {
-    width: 8;
-    padding-top: 1;
+    margin-top: 1;
+}
+
+.levellabel, .providerlabel {
+    width: auto;
 }
 
 .levellabel {
-    width: auto;
-    padding: 1 1 0 2;
+    padding-left: 1;
 }
 
 .levelcount {
-    width: 8;
+    width: 9;
+    height: 1;
+    padding: 0 1;
+    border: none;
     background: $panel;
-    border: tall $panel;
 }
 
 .levelcount:focus {
-    border: tall $primary;
+    background: $primary 40%;
 }
 
 #goal {

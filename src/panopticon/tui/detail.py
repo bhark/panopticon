@@ -75,7 +75,13 @@ class AgentScreen(LiveScreen):
         submission = self.harness.kb.pending.get(agent.submission_id or "")
         window = self.app.context_window(agent)
         self.query_one("#agentstats", Static).update(
-            agent_stats(agent, window, describe_wait(agent, task, submission, now), now)
+            agent_stats(
+                agent,
+                window,
+                self.harness.model(agent),
+                describe_wait(agent, task, submission, now),
+                now,
+            )
         )
 
         if len(agent.entries) == self._entries_seen:

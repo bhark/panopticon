@@ -46,6 +46,14 @@ WINDOWS = {
     "openrouter:deepseek-v3": 163_840,
 }
 
+MODELS = {
+    "claude-code": "sonnet",
+    "codex-cli": "gpt-5.6-sol · high",
+    "kimi-cli": "kimi-code/k3",
+    "openrouter:glm-4.6": "z-ai/glm-4.6",
+    "openrouter:deepseek-v3": "deepseek/deepseek-chat-v3",
+}
+
 ROSTER = [
     ("Alma", "claude-code", Situation.ON_TASK),
     ("Brin", "codex-cli", Situation.ON_TASK),
@@ -110,6 +118,9 @@ class DemoHarness:
 
     def context_window(self, agent: Agent) -> int:
         return WINDOWS.get(agent.provider, 128_000)
+
+    def model(self, agent: Agent) -> str:
+        return MODELS.get(agent.provider, "")
 
 
 def transcript(rng: random.Random, name: str, count: int, now: float) -> list[Entry]:

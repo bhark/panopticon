@@ -8,6 +8,8 @@ from panopticon import cli
 from panopticon import config as config_mod
 from panopticon.model import Level
 
+PROVIDERS = ["claude", "codex", "kimi"]
+
 
 class FakeArgs:
     def __init__(self, **kw):
@@ -33,23 +35,36 @@ class TestParsing:
 
 class TestRoster:
     def test_the_default_roster_is_a_jury_of_three(self):
-        assert cli._wanted(FakeArgs()) == {Level.CAPABLE: 1, Level.BALANCED: 1, Level.FAST: 1}
+        assert cli._wanted(FakeArgs(), PROVIDERS) == {
+            ("claude", Level.CAPABLE): 1,
+            ("codex", Level.BALANCED): 1,
+            ("kimi", Level.FAST): 1,
+        }
 
     def test_a_mix_is_taken_as_written(self):
-        wanted = cli._wanted(FakeArgs(mix="fast=3,capable=1"))
-        assert wanted == {Level.CAPABLE: 1, Level.BALANCED: 0, Level.FAST: 3}
+        wanted = cli._wanted(FakeArgs(mix="codex/capable=2,kimi/fast=1"), PROVIDERS)
+        assert wanted == {("codex", Level.CAPABLE): 2, ("kimi", Level.FAST): 1}
+
+    def test_a_mix_of_bare_levels_still_spreads_over_the_providers(self):
+        wanted = cli._wanted(FakeArgs(mix="fast=3,capable=1"), PROVIDERS)
+        assert sum(wanted.values()) == 4
+        assert sum(n for (_, level), n in wanted.items() if level is Level.FAST) == 3
 
     def test_a_mix_that_fights_the_head_count_is_refused(self):
         with pytest.raises(ValueError, match="asks for 4"):
-            cli._wanted(FakeArgs(mix="fast=3,capable=1", agents=5))
+            cli._wanted(FakeArgs(mix="fast=3,capable=1", agents=5), PROVIDERS)
 
     def test_a_roster_too_small_for_a_jury_is_refused(self):
         with pytest.raises(ValueError, match="jury"):
-            cli._wanted(FakeArgs(agents=2))
+            cli._wanted(FakeArgs(agents=2), PROVIDERS)
 
     def test_an_unknown_level_says_which_ones_exist(self):
-        with pytest.raises(ValueError, match="Levels are fast, balanced, capable"):
-            cli._wanted(FakeArgs(mix="quick=3"))
+        with pytest.raises(ValueError, match="levels are fast, balanced, capable"):
+            cli._wanted(FakeArgs(mix="quick=3"), PROVIDERS)
+
+    def test_a_mix_naming_a_provider_that_is_not_here_is_refused(self):
+        with pytest.raises(ValueError, match="not usable here"):
+            cli._wanted(FakeArgs(mix="codex-luna/fast=3"), PROVIDERS)
 
 
 def test_headless_without_a_goal_says_so(capsys, git_repo, tmp_path, monkeypatch):

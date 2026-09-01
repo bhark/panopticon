@@ -31,7 +31,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--goal")
     parser.add_argument("--agents", type=int)
     parser.add_argument(
-        "--mix", help="levels to open with, e.g. fast=3,balanced=2,capable=1; sets the head count"
+        "--mix",
+        help="what to open with, e.g. fast=3,codex/capable=2; sets the head count",
     )
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--provider", action="append", help="restrict to these providers")
@@ -109,22 +110,25 @@ def _config(args: argparse.Namespace) -> int:
     return 0
 
 
-def _mix(raw: str) -> dict[Level, int]:
-    """fast=3,balanced=2,capable=1. Raises ValueError on anything else."""
-    out: dict[Level, int] = {}
+def _mix(raw: str) -> dict[config_mod.Wanted, int]:
+    """fast=3,codex/capable=2. Raises ValueError on anything else."""
+    out: dict[config_mod.Wanted, int] = {}
     try:
         for part in raw.split(","):
             name, _, count = part.partition("=")
-            out[Level(name.strip())] = int(count)
+            provider, _, level = name.strip().rpartition("/")
+            out[provider or None, Level(level)] = int(count)
     except ValueError:
         levels = ", ".join(str(level) for level in Level)
-        raise ValueError(f"bad --mix: {raw!r}. Levels are {levels}.") from None
+        raise ValueError(
+            f"bad --mix: {raw!r}. An entry is [provider/]level=count; levels are {levels}."
+        ) from None
     if any(n < 0 for n in out.values()) or not sum(out.values()):
         raise ValueError("a mix needs at least one agent")
     return out
 
 
-def _wanted(args: argparse.Namespace) -> dict[Level, int]:
+def _wanted(args: argparse.Namespace, providers: list[str]) -> dict[config_mod.Pick, int]:
     """The roster the flags asked for; the interface asks for it when they did not."""
     mix = _mix(args.mix) if args.mix else None
     count = sum(mix.values()) if mix else (args.agents or MIN_AGENTS)
@@ -132,7 +136,12 @@ def _wanted(args: argparse.Namespace) -> dict[Level, int]:
         raise ValueError(f"--mix asks for {count} agents but --agents says {args.agents}.")
     if (args.agents or args.mix) and count < MIN_AGENTS:
         raise ValueError(f"at least {MIN_AGENTS} agents are needed for a jury.")
-    return config_mod.roster(count, mix)
+    if mix and (unknown := sorted({p for p, _ in mix if p and p not in providers})):
+        raise ValueError(
+            f"--mix names {', '.join(unknown)}, which is not usable here. "
+            f"Usable: {', '.join(providers)}."
+        )
+    return config_mod.roster(count, providers, mix)
 
 
 def _providers(cfg: Config, only: list[str] | None) -> tuple[dict, int]:
@@ -159,7 +168,7 @@ def _start(args: argparse.Namespace) -> int:
     if code:
         return code
     try:
-        wanted = _wanted(args)
+        wanted = _wanted(args, sorted(usable))
     except ValueError as exc:
         print(exc, file=sys.stderr)
         return 1
@@ -167,8 +176,8 @@ def _start(args: argparse.Namespace) -> int:
     store = Store(cwd / STATE_DIRNAME)
     providers = {k: build_levels(k, v) for k, v in usable.items()}
 
-    def build(goal: str, roster: dict[Level, int]) -> Orchestrator:
-        assigned = config_mod.spread(sum(roster.values()), sorted(usable), roster)
+    def build(goal: str, roster: dict[config_mod.Pick, int]) -> Orchestrator:
+        assigned = config_mod.deal(roster)
         agents = [
             Agent(name=name, provider=provider, level=level)
             for name, (provider, level) in zip(names.generate(len(assigned)), assigned, strict=True)
@@ -246,9 +255,9 @@ def _run(orch: Orchestrator, headless: bool = False) -> int:
 
 
 def _ask(
-    build: Callable[[str, dict[Level, int]], Orchestrator],
+    build: Callable[[str, dict[config_mod.Pick, int]], Orchestrator],
     saved: Callable[[], Orchestrator] | None,
-    roster: dict[Level, int],
+    roster: dict[config_mod.Pick, int],
     providers: list[str],
 ) -> int:
     """Nothing is assembled yet: the interface asks for what the flags did not say."""
@@ -280,9 +289,9 @@ async def _drop(task: asyncio.Task) -> None:
 async def _interactive(
     ready: Orchestrator | None = None,
     *,
-    build: Callable[[str, dict[Level, int]], Orchestrator] | None = None,
+    build: Callable[[str, dict[config_mod.Pick, int]], Orchestrator] | None = None,
     saved: Callable[[], Orchestrator] | None = None,
-    roster: dict[Level, int] | None = None,
+    roster: dict[config_mod.Pick, int] | None = None,
     providers: list[str] | None = None,
 ) -> Orchestrator | None:
     from panopticon.tui.app import PanopticonApp

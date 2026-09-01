@@ -51,16 +51,23 @@ panopticon --version
 With no `--goal`, the interface asks for the goal and the roster on the way in, and offers to pick
 a saved run back up; `--headless` has nowhere to ask, so it needs one.
 
+`--mix` says what the roster is made of. `--mix fast=3,balanced=1` leaves the providers to
+round-robin; `--mix codex/capable=2,codex-luna/balanced=1` names them, so you get exactly the
+models you asked for. The interface asks the same thing as a grid, one row per provider.
+
 Panopticon checks for a newer release once a day, in the background and never on the way
 in; when there is one, the header says so and `panopticon update` installs it.
 
 Providers live in `~/.panopticon/config.json`. The three CLIs work with no key if they
-are installed and signed in; OpenRouter needs `OPENROUTER_API_KEY`.
+are installed and signed in; OpenRouter needs `OPENROUTER_API_KEY`. An entry is one model:
+to run two models of the same CLI, copy the entry, give it another name and another model,
+and it is a provider of its own. `panopticon config --list` prints them all.
 
 ## The interface
 
 Arrow keys and enter/esc. `s` shoutbox, `p` pause and drain, `f` force end, `k` knowledge
-base, `?` help, `q` quit. Enter on an agent or a task opens it.
+base, `?` help, `q` quit. Enter on an agent or a task opens it; an agent says which model it
+is actually on, effort and all.
 
 Pausing drains the harness - every agent finishes the turn it is in - and saves, so
 `panopticon resume` picks the same run back up.

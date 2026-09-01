@@ -34,6 +34,7 @@ from panopticon.providers.base import (
     TurnRequest,
     TurnResponse,
     classify,
+    engine,
     is_overflow,
 )
 from panopticon.services.bus import Bus
@@ -588,6 +589,11 @@ class Orchestrator:
         """The window the agent is actually held to, which is where compaction fires."""
         found = self.providers.get(agent.provider, {}).get(agent.level)
         return transcript.usable_window(found) if found else 0
+
+    def model(self, agent: Agent) -> str:
+        """What the agent's provider and level resolve to."""
+        found = self.providers.get(agent.provider, {}).get(agent.level)
+        return engine(found) if found else ""
 
     def save(self) -> None:
         self.store.save(store_mod.snapshot(self))

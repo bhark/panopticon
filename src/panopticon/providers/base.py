@@ -40,6 +40,13 @@ class Provider(Protocol):
         ...
 
 
+def engine(provider: Provider) -> str:
+    """The model behind a provider entry, plus the effort where it takes one."""
+    model = getattr(provider, "model", "")
+    effort = getattr(provider, "effort", None)
+    return f"{model} · {effort}" if effort else model
+
+
 def action_schema(tools: list[ToolSpec]) -> dict[str, Any]:
     """Flat {tool, args} rather than a per-tool oneOf: every provider accepts it."""
     return {

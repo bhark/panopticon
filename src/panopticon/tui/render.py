@@ -158,7 +158,7 @@ def pairs_grid(rows: list[tuple[str, RenderableType]], columns: int = 2) -> Tabl
     return grid
 
 
-def agent_stats(agent: Agent, window: int, waiting: str, now: float) -> RenderableType:
+def agent_stats(agent: Agent, window: int, model: str, waiting: str, now: float) -> RenderableType:
     ctx_text, ctx_style = context_cell(agent.usage.context_tokens, window)
     usage = agent.usage
     context = Text(ctx_text.strip(), style=ctx_style)
@@ -167,6 +167,7 @@ def agent_stats(agent: Agent, window: int, waiting: str, now: float) -> Renderab
     rows: list[tuple[str, RenderableType]] = [
         ("provider", Text(agent.provider, style=INK)),
         ("level", Text(str(agent.level), style=INK)),
+        ("model", Text(model or "-", style=INK)),
         (
             "situation",
             Text(SITUATION_LABEL[agent.situation], style=SITUATION_STYLE[agent.situation]),

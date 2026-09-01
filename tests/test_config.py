@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 
 from panopticon import config as config_mod
 from panopticon.model import Level
@@ -11,10 +12,14 @@ PROVIDERS = ["claude", "codex", "kimi"]
 
 
 def levels(count: int, providers: list[str] | None = None, mix=None) -> list[Level]:
-    return [level for _, level in config_mod.spread(count, providers or PROVIDERS, mix)]
+    return [level for _, level in config_mod.deal(picks(count, providers, mix))]
 
 
-class TestSpread:
+def picks(count: int, providers: list[str] | None = None, mix=None):
+    return config_mod.roster(count, providers or PROVIDERS, mix)
+
+
+class TestRoster:
     def test_the_smallest_roster_gets_one_of_each_level(self):
         assert levels(3) == [Level.CAPABLE, Level.BALANCED, Level.FAST]
 
@@ -25,25 +30,31 @@ class TestSpread:
         assert got.count(Level.FAST) == 2
 
     def test_providers_still_go_round_robin(self):
-        assert [p for p, _ in config_mod.spread(7, PROVIDERS)] == [
-            "claude",
-            "codex",
-            "kimi",
-            "claude",
-            "codex",
-            "kimi",
-            "claude",
-        ]
+        dealt = [p for p, _ in config_mod.deal(picks(7))]
+        assert sorted(Counter(dealt).values()) == [2, 2, 3]
 
     def test_an_explicit_mix_is_dealt_exactly_and_interleaved(self):
-        got = levels(6, mix={Level.FAST: 3, Level.BALANCED: 2, Level.CAPABLE: 1})
+        mix = {(None, Level.FAST): 3, (None, Level.BALANCED): 2, (None, Level.CAPABLE): 1}
+        got = levels(6, mix=mix)
         assert got.count(Level.FAST) == 3
         assert got.count(Level.BALANCED) == 2
         assert got.count(Level.CAPABLE) == 1
         assert got[:3] == [Level.CAPABLE, Level.BALANCED, Level.FAST]  # not grouped by level
 
     def test_a_mix_of_one_level_only_is_honoured(self):
-        assert levels(3, mix={Level.FAST: 3}) == [Level.FAST] * 3
+        assert levels(3, mix={(None, Level.FAST): 3}) == [Level.FAST] * 3
+
+    def test_a_mix_that_names_providers_gets_exactly_those(self):
+        mix = {("codex", Level.CAPABLE): 2, ("kimi", Level.FAST): 1}
+        assert picks(3, mix=mix) == {("codex", Level.CAPABLE): 2, ("kimi", Level.FAST): 1}
+
+    def test_a_named_provider_does_not_move_the_round_robin_on(self):
+        mix = {("kimi", Level.CAPABLE): 2, (None, Level.FAST): 2}
+        assert picks(4, mix=mix) == {
+            ("kimi", Level.CAPABLE): 2,
+            ("claude", Level.FAST): 1,
+            ("codex", Level.FAST): 1,
+        }
 
 
 class TestLoad:
