@@ -55,6 +55,7 @@ class FakeHarness:
         self.entered: list[tuple[str, Situation, str]] = []
         self.launched: list[Task] = []
         self.closed: list[Task] = []
+        self.closers: list[str] = []
         self.retired: list[str] = []
         self.left: list[tuple[str, str, str]] = []
         self.tallies = 0
@@ -102,7 +103,8 @@ class FakeHarness:
         self.board.unassign(name, task.id)
         leaver = self.agents[name]
         leaver.task_id = None
-        self.enter(leaver, Situation.IDLE, f"You left task {task.id}.")
+        if leaver.situation in (Situation.ON_TASK, Situation.WAITING_FOR_SEATS):
+            self.enter(leaver, Situation.IDLE, f"You left task {task.id}.")
         if was_running:
             for other in task.holders:
                 self.agents[other].situation = Situation.WAITING_FOR_SEATS
@@ -118,7 +120,17 @@ class FakeHarness:
             holder = self.agents[name]
             holder.task_id = None
             self.enter(holder, Situation.IDLE, f"You finished task {task.id}.")
+        self.spawn_closer(task)
         self.closed.append(task)
+
+    def spawn_closer(self, task: Task) -> None:
+        name = f"closer{task.closer_attempts + 1}"
+        self.agents[name] = Agent(name=name, provider="fake", transient=True)
+        self.agents[name].situation = Situation.CLOSING_TASK
+        self.agents[name].task_id = task.id
+        task.closer = name
+        task.closer_attempts += 1
+        self.closers.append(name)
 
     def retire(self, agent: Agent) -> None:
         agent.situation = Situation.RELIEVED

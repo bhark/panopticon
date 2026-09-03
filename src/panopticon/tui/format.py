@@ -143,6 +143,8 @@ def task_state(task: Task) -> tuple[str, str]:
     finalized = sum(1 for s in task.seats if s.finalization)
     if task.archived_at:
         return "closed", FAINT
+    if task.closing:
+        return "closing", VIOLET
     if finalized:
         return f"finalizing {finalized}/{len(task.seats)}", VIOLET
     if task.running:

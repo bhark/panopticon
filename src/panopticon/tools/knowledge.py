@@ -62,6 +62,16 @@ async def submit_truth(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     if not title or not body:
         return ActionResult.fail("Both title and body are needed; the body carries your proof.")
 
+    jurors = sum(
+        1 for a in harness.agents.values() if a.alive and not a.transient and a.name != agent.name
+    )
+    if jurors < harness.kb.NEEDED_TRUE:
+        return ActionResult.fail(
+            f"A submission needs {harness.kb.NEEDED_TRUE} other agents to call it true and "
+            f"there are {jurors} here, so it could never be accepted. Keep the finding to "
+            f"yourself or pass it on directly."
+        )
+
     submission = harness.kb.submit(agent.name, title, body)
     harness.broadcast(
         QueueItem(

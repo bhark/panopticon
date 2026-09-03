@@ -38,6 +38,10 @@ def _seat_line(seat: Seat) -> str:
 NUDGE_MINUTES = (15, 30, 45)
 EXPIRE_MINUTES = 60
 
+CHECKIN_MINUTES = 60  # a held seat on a running task is asked where it stands this often
+REPLY_MINUTES = 20  # and has this long to take a turn
+CHECKIN_STRIKES = 3  # check-in, warning, then the seat goes
+
 
 class TaskBoard:
     ARCHIVE_SHOWN = 20
@@ -58,7 +62,8 @@ class TaskBoard:
         return self.tasks.get(task_id)
 
     def task_of(self, agent: str) -> Task | None:
-        return next((t for t in self.open_tasks() if t.seat_of(agent)), None)
+        # a closing task still records who sat on it, but nobody is on it any more
+        return next((t for t in self.open_tasks() if not t.closing and t.seat_of(agent)), None)
 
     def duplicate_of(self, title: str) -> Task | None:
         """An open task saying the same thing. Agents acting at once all file the same task."""
@@ -75,7 +80,7 @@ class TaskBoard:
         return None
 
     def held_seats(self) -> list[tuple[Task, Seat]]:
-        return [(t, s) for t in self.open_tasks() for s in t.seats if s.holder]
+        return [(t, s) for t in self.open_tasks() if not t.closing for s in t.seats if s.holder]
 
     def waiting_seats(self, now: float) -> list[tuple[Task, Seat, int]]:
         """Held seats on tasks that have not started, with the minutes each has been held."""
@@ -83,6 +88,16 @@ class TaskBoard:
             (task, seat, int((now - (seat.assigned_at or task.created_at)) // 60))
             for task in self.open_tasks()
             if task.started_at is None
+            for seat in task.seats
+            if seat.holder
+        ]
+
+    def running_seats(self, now: float) -> list[tuple[Task, Seat, int]]:
+        """Held seats on running tasks, with the minutes since their last check-in."""
+        return [
+            (task, seat, int((now - (seat.checkin_at or task.started_at or now)) // 60))
+            for task in self.open_tasks()
+            if task.running and not task.closing
             for seat in task.seats
             if seat.holder
         ]
@@ -95,6 +110,16 @@ class TaskBoard:
         seat.nudges_sent = due
         return True
 
+    def checkin(self, seat: Seat, now: float) -> int:
+        """Record a check-in on the seat and report how many are outstanding."""
+        seat.checkins += 1
+        seat.checkin_at = now
+        return seat.checkins
+
+    def answered(self, seat: Seat) -> None:
+        """Clear the strikes but keep the timestamp, so the next check-in is still an hour off."""
+        seat.checkins = 0
+
     def render(self) -> str:
         now = time.time()
         lines: list[str] = []
@@ -102,11 +127,12 @@ class TaskBoard:
         lines.append(f"open tasks ({len(open_tasks)})" if open_tasks else "open tasks: none")
         for task in open_tasks:
             taken = len(task.holders)
-            state = (
-                f"running {_ago(task.started_at or now, now)}"
-                if task.running
-                else f"waiting {taken}/{len(task.seats)} seats"
-            )
+            if task.closing:
+                state = f"being closed out by {task.closer}"
+            elif task.running:
+                state = f"running {_ago(task.started_at or now, now)}"
+            else:
+                state = f"waiting {taken}/{len(task.seats)} seats"
             lines.append(
                 f"[{task.id}] {task.title} | {state} | by {task.created_by} "
                 f"{_ago(task.created_at, now)} ago"
@@ -164,9 +190,21 @@ class TaskBoard:
         seat.holder = None
         seat.assigned_at = None
         seat.nudges_sent = 0
+        seat.checkin_at = None
+        seat.checkins = 0
         seat.finalization = None
         # a task that loses a seat is back to waiting, worktree and all
+        was_running = task.started_at is not None
         task.started_at = None
+        if was_running:
+            # the hour before a seat expires measures the wait, so it restarts here
+            now = time.time()
+            for other in task.seats:
+                if other.holder:
+                    other.assigned_at = now
+                    other.nudges_sent = 0
+                    other.checkin_at = None
+                    other.checkins = 0
         return task
 
     def finalize(self, agent: str, task_id: str, reason: str, conclusion: str) -> tuple[Task, bool]:

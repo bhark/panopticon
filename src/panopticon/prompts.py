@@ -45,7 +45,9 @@ _SITUATIONS = {
         "You hold a seat on a task that has not started, because seats on it are still open. It "
         "starts by itself the moment the last one fills, and your context is cleared for it "
         "then. Until that happens you are free to act, and you are told when someone joins. If "
-        "nobody does you will be nudged, and after an hour your seat is released for you."
+        "nobody does you will be nudged, and after an hour your seat is released for you. You "
+        "can also take a seat on another task instead, which gives up this one: do that when "
+        "everyone is waiting and nobody is left to fill anybody's seat."
     ),
     Situation.ON_TASK: (
         "You are on a running task, in a git worktree of its own shared with the other agents "

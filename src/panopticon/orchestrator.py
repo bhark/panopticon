@@ -423,10 +423,10 @@ class Orchestrator:
                 f"You finished work on {task.id} ({task.title}). It is sitting in the git "
                 f"worktree at {task.worktree}. Another agent is integrating it.",
             )
-        self._spawn_closer(task)
+        self.spawn_closer(task)
         self.emit(Event("task", f"{task.id} finalized by everyone seated"))
 
-    def _spawn_closer(self, task: Task) -> None:
+    def spawn_closer(self, task: Task) -> None:
         name = next(n for n in generate(8) if n not in self.agents)
         # the harness has no agent to ask, so a closer never spends a capable slot
         closer = Agent(
@@ -437,6 +437,7 @@ class Orchestrator:
         )
         closer.task_id = task.id
         task.closer = name
+        task.closer_attempts += 1
         self.agents[name] = closer
         reasons = "\n".join(
             f"- {seat.holder} ({seat.role}): {seat.finalization.reason} -> "

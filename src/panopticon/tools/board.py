@@ -26,6 +26,13 @@ CANCEL_FINALIZE = "cancel_finalize"
 
 _SEATED = (Situation.WAITING_FOR_SEATS, Situation.ON_TASK)
 _BOARD_READERS = (*_SEATED, Situation.IDLE, Situation.CLOSING_TASK)
+# a seat can be taken from idle, or given up for a better one while still waiting
+_SEAT_TAKERS = (Situation.IDLE, Situation.WAITING_FOR_SEATS)
+
+
+def _seatable(harness: Harness) -> int:
+    """Agents that could ever fill a seat. A released one counts; it can rejoin."""
+    return sum(1 for a in harness.agents.values() if a.alive and not a.transient)
 
 
 def _has_finalized(agent: Agent, harness: Harness) -> bool:
@@ -84,6 +91,12 @@ async def create_task(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     roles = [r.strip() for r in args["roles"] if r.strip()]
     if not roles:
         return ActionResult.fail("roles must hold at least one role; one role is one seat.")
+    seatable = _seatable(ctx.harness)
+    if len(roles) > seatable:
+        return ActionResult.fail(
+            f"You asked for {len(roles)} seats and there are only {seatable} agents here, so "
+            f"the task could never start. Ask for {seatable} seats or fewer."
+        )
     title = args["title"].strip()
     if not title:
         return ActionResult.fail("title must not be empty.")
@@ -112,23 +125,27 @@ async def create_task(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     ASSIGN_SELF,
     "Take an open seat on a task, by the role of that seat. If yours fills the last seat the "
     "task starts at once: everyone on it gets a fresh context and a git worktree of their own. "
-    "If seats are still open you wait, and you can keep acting while you do.",
-    situations=(Situation.IDLE,),
+    "If seats are still open you wait, and you can keep acting while you do. While you are "
+    "waiting you can call this again for a seat on another task: you give up the seat you were "
+    "waiting on and take the new one, which is how you break a standoff where everyone is "
+    "waiting and nobody is left to fill a seat.",
+    situations=_SEAT_TAKERS,
     task_id=ArgSpec("string", "The task id as it appears on the board."),
     role=ArgSpec("string", "The role of the seat you want, exactly as it appears on the board."),
 )
 async def assign_self(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     harness, agent = ctx.harness, ctx.agent
-    if agent.task_id:
-        return ActionResult.fail(
-            f"You already hold a seat on task {agent.task_id}. Leave it first with {UNASSIGN_SELF}."
-        )
     role = args["role"].strip()
+    old = harness.board.get(agent.task_id or "")
     try:
         task, ready = harness.board.assign(agent.name, args["task_id"].strip(), role)
     except ValueError as exc:
         return ActionResult.fail(str(exc))
 
+    if old is not None:
+        # idle in effect, between seats: leave_task must not clear the transcript for a swap
+        agent.situation = Situation.IDLE
+        harness.leave_task(agent.name, old, f"moved to the {role} seat on {task.id}", notify=False)
     agent.task_id = task.id
     _tell_mates(ctx, task, f"{agent.name} took the {role} seat on task {task.id} alongside you.")
     if not ready:

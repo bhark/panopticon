@@ -109,6 +109,8 @@ class Seat:
     holder: str | None = None
     assigned_at: float | None = None
     nudges_sent: int = 0
+    checkin_at: float | None = None
+    checkins: int = 0
     finalization: Finalization | None = None
 
 
@@ -124,6 +126,7 @@ class Task:
     archived_at: float | None = None
     worktree: str | None = None
     closer: str | None = None
+    closer_attempts: int = 0
     outcome: str | None = None
 
     @property
@@ -133,6 +136,11 @@ class Task:
     @property
     def running(self) -> bool:
         return self.started_at is not None and self.archived_at is None
+
+    @property
+    def closing(self) -> bool:
+        """Finalized by every seat and handed to a closer; its held seats are history."""
+        return self.closer is not None and self.archived_at is None
 
     @property
     def holders(self) -> list[str]:
@@ -274,6 +282,10 @@ class Harness(Protocol):
 
     async def close_task(self, task: Task) -> None:
         """All holders agreed to finalize: release them and spin up the closer."""
+        ...
+
+    def spawn_closer(self, task: Task) -> None:
+        """Put a fresh transient agent on integrating a finalized task."""
         ...
 
     def retire(self, agent: Agent) -> None:

@@ -10,9 +10,16 @@ import pytest
 
 from panopticon.model import Action, Entry, Level, Situation, ToolCtx
 from panopticon.tools import dispatch, tools_for
-from panopticon.tools.board import ASSIGN_SELF, CANCEL_FINALIZE, FINALIZE_TASK, UNASSIGN_SELF
+from panopticon.tools.board import (
+    ASSIGN_SELF,
+    CANCEL_FINALIZE,
+    CREATE_TASK,
+    FINALIZE_TASK,
+    UNASSIGN_SELF,
+)
 from panopticon.tools.comms import SEND_DM
 from panopticon.tools.jury import JOIN_JURY, SUBMIT_VERDICT
+from panopticon.tools.knowledge import SUBMIT_TRUTH
 from panopticon.tools.lifecycle import RELIEVE_SELF, VOTE_GOAL_REACHED
 from panopticon.tools.wait import WAIT
 from panopticon.tools.workspace import BASH, EDIT_FILE, READ_FILE, WRITE_FILE
@@ -209,20 +216,30 @@ async def test_the_last_seat_starts_the_task_and_clears_every_holder(tmp_path):
     assert str(h.worktrees.path_for(task_id)) in preprompt
 
 
-async def test_a_second_seat_is_refused_while_you_hold_one(tmp_path):
+async def test_a_waiting_agent_moves_its_seat_and_keeps_its_context(tmp_path):
     h = harness(tmp_path)
-    task = h.board.create("Ada", "one", "d", ["dev", "reviewer"])
-    other = h.board.create("Ada", "two", "d", ["dev"])
-    assert (await run(h, "Ada", ASSIGN_SELF, task_id=task.id, role="dev")).ok
+    stuck = h.board.create("Ada", "one", "d", ["dev", "reviewer"])
+    other = h.board.create("Bo", "two", "d", ["dev", "reviewer", "tester"])
+    h.board.assign("Bo", other.id, "reviewer")
+    assert (await run(h, "Ada", ASSIGN_SELF, task_id=stuck.id, role="dev")).ok
+    h.agents["Ada"].entries.append(Entry(kind="note", text="worth keeping"))
 
-    # waiting for seats does not offer it, and the handler refuses it even so
+    result = await run(h, "Ada", ASSIGN_SELF, task_id=other.id, role="dev")
+
+    assert result.ok
+    assert stuck.seats[0].holder is None  # the seat it gave up is open again
+    assert other.seat_of("Ada").role == "dev"
+    assert h.agents["Ada"].task_id == other.id
+    assert h.agents["Ada"].situation is Situation.WAITING_FOR_SEATS
+    assert h.agents["Ada"].entries[-1].text == "worth keeping"  # not reset on the way through
+    assert any(other.id in text for text in h.messages_for("Bo"))
+
+
+async def test_an_agent_on_a_running_task_cannot_take_another_seat(tmp_path):
+    h = harness(tmp_path)
+    await seat_everyone(h, {"Ada": "dev", "Bo": "reviewer"})
+
     assert ASSIGN_SELF not in tool_names(h.agents["Ada"], h)
-    result = await dispatch(
-        ToolCtx(h.agents["Ada"], h),
-        Action(ASSIGN_SELF, {"task_id": other.id, "role": "dev"}),
-        [ASSIGN_SELF],
-    )
-    assert not result.ok and task.id in result.text
 
 
 async def test_a_task_ends_only_when_every_seat_finalizes(tmp_path):
@@ -427,3 +444,31 @@ async def test_waiting_forever_is_capped_while_you_hold_a_task_seat(tmp_path):
         result = await run(h, "Bo", WAIT)
         assert result.ok and "hand it back" in result.text
         assert seated.wake_at is not None and seated.wake_at != math.inf
+
+
+async def test_a_task_cannot_ask_for_more_seats_than_there_are_agents(tmp_path):
+    h = harness(tmp_path)  # Ada, Bo and Cy
+
+    result = await run(
+        h,
+        "Ada",
+        CREATE_TASK,
+        title="rewrite everything",
+        description="d",
+        roles=["dev", "reviewer", "tester", "scribe"],
+    )
+
+    assert not result.ok and "only 3 agents" in result.text
+    assert h.board.open_tasks() == []
+
+
+async def test_a_truth_is_refused_when_no_jury_could_ever_form(tmp_path):
+    h = harness(tmp_path)
+    h.agents["Ada"].seen_kb = True
+    h.agents["Bo"].situation = Situation.DEAD
+    h.agents["Cy"].situation = Situation.DEAD
+
+    result = await run(h, "Ada", SUBMIT_TRUTH, title="it holds", body="proof")
+
+    assert not result.ok and "could never be accepted" in result.text
+    assert h.kb.pending == {}
