@@ -194,8 +194,11 @@ async def compact(
     if cut <= 0:
         return ""
     summary = ""
+    epoch = agent.epoch
     if agent.compaction_failures < MAX_COMPACTION_FAILURES:
         summary = await _summarize(agent, (provider, *fallbacks), system, cut)
+    if agent.epoch != epoch:
+        return ""
     replacement = (
         Entry(kind="summary", text=summary, turn=agent.turns)
         if summary

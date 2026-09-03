@@ -304,6 +304,25 @@ class Down:
         return None
 
 
+class Held:
+    """A provider that answers only when the test lets it, so a reset can land mid-turn."""
+
+    context_window = 200_000
+
+    def __init__(self) -> None:
+        self.release = asyncio.Event()
+        self.calls = 0
+
+    async def act(self, req: TurnRequest) -> TurnResponse:
+        self.calls += 1
+        await self.release.wait()
+        self.release.clear()
+        return TurnResponse(action=Action("view_task_board", {}))
+
+    async def summarize(self, system: str, text: str) -> str | None:
+        return None
+
+
 OUT_OF_QUOTA = "openrouter 429: {'error': 'Monthly usage limit reached'}"
 
 
@@ -383,6 +402,26 @@ async def test_agents_park_and_the_harness_stays_up_when_every_provider_is_out(t
 
     assert all(a.alive for a in orch.agents.values())
     assert not orch._stop.is_set(), "an outage must not close the session"
+    orch.stop("done")
+    await asyncio.wait_for(run, 5)
+
+
+@pytest.mark.asyncio
+async def test_a_turn_that_outlives_a_context_reset_is_dropped(tmp_path):
+    """The answer is to a prompt that no longer exists; it must not land in the fresh one."""
+    held = Held()
+    orch = harness(tmp_path, {"held": dict.fromkeys(Level, held)}, {"Ada": "held"})
+    ada = orch.agents["Ada"]
+    run = asyncio.create_task(orch.run())
+    await until(lambda: held.calls == 1)
+
+    orch.enter(ada, Situation.IDLE, "reset under you")
+    held.release.set()
+    await until(lambda: held.calls == 2)
+
+    assert [e.kind for e in ada.entries] == ["note"]
+    assert "reset under you" in ada.entries[0].text
+    assert ada.turns == 1
     orch.stop("done")
     await asyncio.wait_for(run, 5)
 

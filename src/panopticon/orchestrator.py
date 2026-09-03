@@ -186,8 +186,11 @@ class Orchestrator:
             if not tools:
                 return
             transcript.trim_cold(agent)
+            epoch = agent.epoch
             system = prompts.build_system_prompt(agent, self, tools)
             await self._maybe_compact(agent, system)
+            if agent.epoch != epoch:
+                continue
             request = TurnRequest(
                 agent=agent.name,
                 system=system,
@@ -199,6 +202,8 @@ class Orchestrator:
                 response = await self._engine(agent).act(request)
             agent.turns += 1
             agent.last_turn_at = time.time()
+            if agent.epoch != epoch:
+                continue  # reset under this turn; the prompt it answers is gone
 
             transcript.note_usage(agent, response.usage)
             if response.action is None:
@@ -369,6 +374,7 @@ class Orchestrator:
     def enter(self, agent: Agent, situation: Situation, note: str = "") -> None:
         agent.situation = situation
         agent.wake_at = None
+        agent.epoch += 1
         transcript.reset(agent, prompts.situation_preprompt(agent, self, note, situation))
         self._record(agent, agent.entries)
         self.emit(Event("situation", f"{agent.name} is now {situation}", agent.name))

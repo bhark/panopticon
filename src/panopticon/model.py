@@ -215,6 +215,7 @@ class Agent:
     compaction_failures: int = 0
     last_turn_at: float = 0.0
     last_action: str = ""
+    epoch: int = 0  # bumped by every context reset; a turn that outlives one is dropped
     entries: list[Entry] = field(default_factory=list)
     usage: Usage = field(default_factory=Usage)
     # runtime only, never persisted; a list rather than a Queue so it can be read without draining
