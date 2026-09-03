@@ -331,7 +331,7 @@ async def test_you_cannot_judge_your_own_submission_but_can_judge_another(tmp_pa
         Action(JOIN_JURY, {"submission_id": submission_id}),
         [JOIN_JURY],
     )
-    assert not mine.ok and "your own statement" in mine.text
+    assert not mine.ok and "you submitted" in mine.text
 
     h.agents["Bo"].entries.append(Entry("note", "before"))
     assert (await run(h, "Bo", JOIN_JURY, submission_id=submission_id)).ok
@@ -352,6 +352,26 @@ async def test_a_restate_verdict_without_a_restatement_is_refused(tmp_path):
 
     bad_call = await run(h, "Bo", SUBMIT_VERDICT, verdict="maybe", reasoning="unsure")
     assert not bad_call.ok and "true, false, restate" in bad_call.text
+
+
+async def test_a_restater_is_barred_from_the_rewording_and_not_offered_it(tmp_path):
+    h = harness(tmp_path)
+    submission = h.kb.submit("Ada", "claim", "proof")
+    await run(h, "Bo", JOIN_JURY, submission_id=submission.id)
+
+    result = await run(
+        h,
+        "Bo",
+        SUBMIT_VERDICT,
+        verdict="restate",
+        reasoning="too broad",
+        restated_title="narrower claim",
+        restated_body="proof",
+    )
+    assert result.ok and "restated" in result.text
+    assert h.agents["Bo"].situation is Situation.IDLE
+    assert JOIN_JURY not in tool_names(h.agents["Bo"], h)
+    assert JOIN_JURY in tool_names(h.agents["Cy"], h)
 
 
 async def test_a_verdict_ends_jury_duty_and_tells_the_submitter(tmp_path):
@@ -388,6 +408,18 @@ async def test_voting_the_goal_reached_is_refused_while_you_hold_a_seat(tmp_path
     result = await run(h, "Ada", VOTE_GOAL_REACHED, note="looks done")
     assert not result.ok and task.id in result.text
     assert not h.agents["Ada"].voted_goal_reached
+
+
+async def test_voting_the_goal_reached_is_refused_while_you_could_sit_on_a_jury(tmp_path):
+    h = harness(tmp_path)
+    h.kb.submit("Bo", "claim", "proof")
+
+    result = await run(h, "Ada", VOTE_GOAL_REACHED, note="looks done")
+    assert not result.ok and "jury" in result.text
+    assert h.agents["Ada"].situation is Situation.IDLE
+
+    # the submitter cannot judge it, so nothing holds their vote
+    assert (await run(h, "Bo", VOTE_GOAL_REACHED, note="looks done")).ok
 
 
 async def test_voting_releases_you_tells_the_others_and_triggers_a_tally(tmp_path):

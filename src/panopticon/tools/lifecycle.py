@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from panopticon.model import ActionResult, ArgSpec, QueueItem, Situation, ToolCtx
+from panopticon.tools.jury import judgeable
 from panopticon.tools.registry import EVERYWHERE, tool
 
 VOTE_GOAL_REACHED = "vote_goal_reached"
@@ -18,7 +19,8 @@ MARK_DONE = "mark_integration_done"
     "Vote that the goal set for this harness is reached. Your session closes: you keep only the "
     f"message tools and {REJOIN}, and you take no more work until you retract. The whole "
     "session ends when every agent has voted. Vote when the goal is actually met, not when your "
-    "own part of it is and not to get out of work you find hard.",
+    "own part of it is and not to get out of work you find hard. Refused while a truth you "
+    "could judge is waiting for a jury.",
     situations=(Situation.IDLE,),
     note=ArgSpec("string", "One line: why you hold that the goal is reached."),
 )
@@ -27,6 +29,11 @@ async def vote_goal_reached(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     if agent.task_id:
         return ActionResult.fail(
             f"You still hold a seat on task {agent.task_id}. Finish or leave it first."
+        )
+    if judgeable(agent, harness):
+        return ActionResult.fail(
+            "A truth you can judge is waiting for a jury. Judge it first; once released you "
+            "have no jury tools."
         )
     note = args["note"].strip()
     agent.voted_goal_reached = True

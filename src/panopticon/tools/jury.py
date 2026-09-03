@@ -32,10 +32,10 @@ _OFF_DUTY = (
 )
 
 
-def _judgeable(agent: Agent, harness: Harness) -> bool:
-    """Something waiting that this agent is allowed to judge: not its own, not one it holds."""
+def judgeable(agent: Agent, harness: Harness) -> bool:
+    """Something waiting that this agent may judge: not barred from it, not seated on it."""
     return any(
-        s.submitted_by != agent.name and agent.name not in s.jurors
+        agent.name not in s.barred and agent.name not in s.jurors
         for s in harness.kb.pending.values()
     )
 
@@ -45,7 +45,7 @@ def _judgeable(agent: Agent, harness: Harness) -> bool:
     "Show the truths waiting for a jury, with their submitters. Your own submissions are in "
     "there too, and you may not judge those.",
     situations=(*_OFF_DUTY, Situation.JURY),
-    when=lambda agent, harness: agent.situation is Situation.JURY or _judgeable(agent, harness),
+    when=lambda agent, harness: agent.situation is Situation.JURY or judgeable(agent, harness),
 )
 async def list_jury_submissions(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     return ActionResult(True, ctx.harness.kb.render_pending())
@@ -54,12 +54,13 @@ async def list_jury_submissions(ctx: ToolCtx, args: dict[str, Any]) -> ActionRes
 @tool(
     JOIN_JURY,
     "Take jury duty on one submission. Your context is cleared and you judge that one statement "
-    "and nothing else. You cannot judge your own submission. While on the jury your tools are "
+    "and nothing else. You cannot judge a claim you submitted or restated, in any wording. While "
+    "on the jury your tools are "
     "read-only: read files and run shell commands to gather evidence, and only that. Do not run "
     "tests, do not build, do not change anything. This is a reasoning job against what is "
     "already there.",
     situations=(Situation.IDLE,),
-    when=_judgeable,
+    when=judgeable,
     submission_id=ArgSpec("string", "The id of the submission you want to judge."),
 )
 async def join_jury(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
@@ -83,7 +84,8 @@ async def join_jury(ctx: ToolCtx, args: dict[str, Any]) -> ActionResult:
     "any part of it does not hold; one of these discards it immediately, so use it when the "
     "statement is wrong, not when it is merely awkward. 'restate' when the finding is real but "
     "the statement is not the right one: you write the replacement yourself, as one standalone "
-    "claim, and it goes back to the jury from scratch. Your verdict ends your jury duty.",
+    "claim. Writing it is your 'true' on it, so it needs one more, from a juror still seated or "
+    "anyone new. Your verdict ends your jury duty.",
     situations=(Situation.JURY,),
     verdict=ArgSpec("string", f"One of: {_CALLS}."),
     reasoning=ArgSpec("string", "Short. What decided it, and the evidence if you gathered any."),
@@ -148,7 +150,7 @@ def _announce(ctx: ToolCtx, submission: Submission, outcome: str, call: VerdictC
             QueueItem(
                 "jury",
                 f"{agent.name} restated a submission; it is back with the jury as "
-                f"{submission.id}: {submission.title}.",
+                f"{submission.id}, one 'true' short: {submission.title}.",
             ),
             exclude=(agent.name,),
         )

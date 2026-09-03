@@ -57,8 +57,9 @@ def test_true_then_restate_then_false_discards_because_false_came_first():
     )
     assert outcome == "restated"
     assert replacement.restated_from == sid
-    assert replacement.verdicts == []
+    assert [v.juror for v in replacement.verdicts] == ["cy"]
     assert list(kb.pending) == [replacement.id]
+    assert f"restated from {sid}" in kb.render_pending()
 
     _, outcome = kb.verdict("di", replacement.id, FALSE, "it returns None")
 
@@ -66,20 +67,21 @@ def test_true_then_restate_then_false_discards_because_false_came_first():
     assert kb.truths == []
 
 
-def test_a_restatement_is_judged_from_scratch():
+def test_a_restatement_carries_the_restaters_true_and_reseats_only_the_undecided():
     kb, sid = submitted("bo", "cy")
     kb.verdict("bo", sid, TRUE, "looks right")
     replacement, _ = kb.verdict(
         "cy", sid, RESTATE, "too broad", "parse('') raises ValueError", "src/parse.py:31"
     )
 
-    # bo's earlier true is gone with the old statement, so one true is not enough
-    _, outcome = kb.verdict("bo", replacement.id, TRUE, "still holds")
-    assert outcome == "pending"
-    assert kb.truths == []
+    # bo ruled on the old wording and left the bench with it; cy vouched for the new one
+    assert replacement.jurors == []
+    assert [(v.juror, v.call) for v in replacement.verdicts] == [("cy", TRUE)]
+    with pytest.raises(ValueError):
+        kb.verdict("bo", replacement.id, TRUE, "not seated")
 
-    kb.join("di", replacement.id)
-    _, outcome = kb.verdict("di", replacement.id, TRUE, "confirmed")
+    kb.join("bo", replacement.id)
+    _, outcome = kb.verdict("bo", replacement.id, TRUE, "still holds")
     assert outcome == "accepted"
     assert kb.truths[0].title == "parse('') raises ValueError"
     assert kb.truths[0].submitted_by == "cy"  # the restater owns the wording
@@ -158,6 +160,6 @@ def test_a_restored_knowledge_base_keeps_its_bar_and_its_id_sequence():
     revived.restore(json.loads(json.dumps(kb.snapshot())))
 
     assert list(revived.pending) == [first, second.id]
-    with pytest.raises(ValueError, match="your own statement"):
+    with pytest.raises(ValueError, match="you submitted"):
         revived.join("bo", second.id)
     assert revived.submit("cy", "third", "proof").id == "s3"

@@ -33,6 +33,7 @@ class Knowledge:
             lines.append(
                 f"[{sub.id}] {sub.title} | by {sub.submitted_by} | jurors: {jurors} "
                 f"| {trues}/{self.NEEDED_TRUE} true"
+                + (f" | restated from {sub.restated_from}" if sub.restated_from else "")
             )
             lines.append(f"  {sub.body}")
         return "\n".join(lines)
@@ -49,7 +50,9 @@ class Knowledge:
         """Raises ValueError if the agent submitted it or is already seated."""
         sub = self._waiting(submission_id)
         if agent in sub.barred:
-            raise ValueError(f"{sub.id} is your own statement, you cannot judge it")
+            raise ValueError(
+                f"you submitted {sub.id} or a wording it replaced, so you cannot judge it"
+            )
         if agent in sub.jurors:
             raise ValueError(f"you are already on the jury for {sub.id}")
         sub.jurors.append(agent)
@@ -74,7 +77,9 @@ class Knowledge:
         """Returns (submission, outcome) where outcome is accepted|rejected|restated|pending."""
         sub = self._waiting(submission_id)
         if agent in sub.barred:
-            raise ValueError(f"{sub.id} is your own statement, you cannot judge it")
+            raise ValueError(
+                f"you submitted {sub.id} or a wording it replaced, so you cannot judge it"
+            )
         if agent not in sub.jurors:
             raise ValueError(f"you are not on the jury for {sub.id}")
         if any(v.juror == agent for v in sub.verdicts):
@@ -85,7 +90,7 @@ class Knowledge:
         sub.verdicts.append(Verdict(juror=agent, call=call, reasoning=reasoning))
 
         if call is VerdictCall.RESTATE:
-            return self._restate(agent, sub, restated_title, restated_body), "restated"
+            return self._restate(agent, sub, restated_title, restated_body, reasoning), "restated"
 
         if call is VerdictCall.FALSE:
             self._drop(sub)
@@ -122,14 +127,20 @@ class Knowledge:
 
     # internals
 
-    def _restate(self, agent: str, sub: Submission, title: str, body: str) -> Submission:
+    def _restate(
+        self, agent: str, sub: Submission, title: str, body: str, reasoning: str
+    ) -> Submission:
         self._submitted += 1
+        ruled = {v.juror for v in sub.verdicts}
         replacement = Submission(
             id=f"s{self._submitted}",
             title=title,
             body=body,
             submitted_by=agent,
-            jurors=[j for j in sub.jurors if j != agent],
+            # a verdict ends jury duty, so only the undecided stay seated on the new wording
+            jurors=[j for j in sub.jurors if j not in ruled],
+            # writing the wording is the restater's true on it
+            verdicts=[Verdict(juror=agent, call=VerdictCall.TRUE, reasoning=reasoning)],
             restated_from=sub.id,
             barred=[*sub.barred, agent],
         )
