@@ -4,7 +4,9 @@ Every flag below was verified against claude 2.1.252 and each one is load-bearin
 `--output-format stream-json` hard errors without `--verbose`. `--setting-sources ""` is
 what stops the user's settings.json hooks from injecting kilobytes into every turn.
 `--tools ""` disables the built-in tools but not MCP ones, so the empty `--mcp-config`
-and `--strict-mcp-config` are both needed. There is no `--max-turns`.
+and `--strict-mcp-config` are both needed. There is no `--max-turns`. The prompt goes on
+stdin, which `-p` reads when no positional prompt is given; the system prompt stays in argv
+because it is small and stable enough to cache.
 """
 
 from __future__ import annotations
@@ -38,11 +40,10 @@ class ClaudeCLI:
         self.bin = bin
         self.effort = effort
 
-    def _argv(self, system: str, prompt: str, schema: dict | None) -> list[str]:
+    def _argv(self, system: str, schema: dict | None) -> list[str]:
         argv = [
             self.bin,
             "-p",
-            prompt,
             "--output-format",
             "stream-json",
             "--verbose",
@@ -66,8 +67,8 @@ class ClaudeCLI:
         return argv
 
     async def act(self, req: TurnRequest) -> TurnResponse:
-        argv = self._argv(req.system, req.prompt, action_schema(req.tools))
-        done = await _cli.run(argv, cwd=req.cwd, timeout=self.timeout)
+        argv = self._argv(req.system, action_schema(req.tools))
+        done = await _cli.run(argv, cwd=req.cwd, timeout=self.timeout, stdin_text=req.prompt)
         if done.error:
             return TurnResponse(error=_cli.because(done.error, done.stderr))
         return parse_output(done.stdout, req.tools) or TurnResponse(
@@ -77,8 +78,8 @@ class ClaudeCLI:
         )
 
     async def summarize(self, system: str, text: str) -> str | None:
-        argv = self._argv(system, text, None)
-        done = await _cli.run(argv, timeout=self.timeout)
+        argv = self._argv(system, None)
+        done = await _cli.run(argv, timeout=self.timeout, stdin_text=text)
         if done.error:
             return None
         event = _result_event(done.stdout)

@@ -149,7 +149,7 @@ class TestClaudeCLI:
         assert cli_claude.parse_output(stdout, TOOLS).action is not None
 
     def test_the_invocation_keeps_every_load_bearing_flag(self):
-        argv = cli_claude.ClaudeCLI(model="haiku")._argv("sys", "hi", {"type": "object"})
+        argv = cli_claude.ClaudeCLI(model="haiku")._argv("sys", {"type": "object"})
         assert argv[argv.index("--output-format") + 1] == "stream-json"
         assert "--verbose" in argv  # stream-json hard errors without it
         assert argv[argv.index("--tools") + 1] == ""
@@ -159,10 +159,24 @@ class TestClaudeCLI:
         assert "--no-session-persistence" in argv
 
     def test_an_effort_reaches_the_invocation_only_when_one_is_set(self):
-        plain = cli_claude.ClaudeCLI(model="opus")._argv("sys", "hi", None)
+        plain = cli_claude.ClaudeCLI(model="opus")._argv("sys", None)
         assert "--effort" not in plain
-        argv = cli_claude.ClaudeCLI(model="opus", effort="xhigh")._argv("sys", "hi", None)
+        argv = cli_claude.ClaudeCLI(model="opus", effort="xhigh")._argv("sys", None)
         assert argv[argv.index("--effort") + 1] == "xhigh"
+
+    async def test_the_prompt_travels_on_stdin_and_never_in_argv(self):
+        seen = {}
+
+        async def fake_run(argv, *, cwd=None, timeout=0.0, stdin_text=None):
+            seen["argv"], seen["stdin"] = argv, stdin_text
+            return _cli.Completed(fixture("claude_success.ndjson"), "", 0)
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(_cli, "run", fake_run)
+            await cli_claude.ClaudeCLI(model="haiku").act(request("the whole transcript"))
+
+        assert seen["stdin"] == "the whole transcript"
+        assert "the whole transcript" not in seen["argv"]
 
     async def test_a_missing_binary_comes_back_as_an_error_not_an_exception(self):
         provider = cli_claude.ClaudeCLI(model="haiku", bin="claude-does-not-exist")
@@ -185,6 +199,18 @@ class TestProcess:
     async def test_a_binary_that_is_not_there_is_reported_not_raised(self):
         done = await _cli.run(["panopticon-no-such-binary"])
         assert done.error and "could not start" in done.error
+
+    async def test_stdin_reaches_the_child(self):
+        done = await _cli.run(["cat"], stdin_text="the prompt")
+        assert done.stdout == "the prompt"
+
+    async def test_an_argument_past_the_kernel_limit_reads_as_overflow_not_exhaustion(self):
+        """One argv entry caps at 128k, far under any model window; blaming the provider
+        for that took every provider down at once."""
+        done = await _cli.run(["/bin/true", "x" * 131_072])
+
+        assert is_overflow(done.error)
+        assert classify(TurnResponse(error=done.error)) is not Fault.EXHAUSTED
 
     def test_ndjson_skips_anything_that_is_not_a_json_object(self):
         stream = 'warning: x\n{"a": 1}\n[1,2]\n{bad}\n\n{"b": 2}'
@@ -222,19 +248,33 @@ class TestCodexCLI:
         )
         assert "Model metadata" in cli_codex.parse_output(stdout, TOOLS).error
 
-    def test_the_invocation_passes_the_prompt_as_argv_and_prepends_the_system_prompt(self):
+    def test_the_invocation_reads_the_prompt_from_stdin(self):
         """There is no --append-system-prompt, and a piped stdin arrives as a <stdin> block."""
-        argv = cli_codex.CodexCLI(model="gpt-5.1")._argv("SYS\n\nUSER", "/tmp", "/tmp/s.json")
-        assert argv[-1] == "SYS\n\nUSER"
+        argv = cli_codex.CodexCLI(model="gpt-5.1")._argv("/tmp", "/tmp/s.json")
+        assert argv[-1] == "-"
         assert argv[argv.index("-C") + 1] == "/tmp"
         assert argv[argv.index("--output-schema") + 1] == "/tmp/s.json"
         assert {"--ephemeral", "--ignore-user-config", "--skip-git-repo-check"} <= set(argv)
 
     def test_an_effort_arrives_as_a_toml_config_override(self):
-        plain = cli_codex.CodexCLI(model="x")._argv("p", None, None)
+        plain = cli_codex.CodexCLI(model="x")._argv(None, None)
         assert "-c" not in plain
-        argv = cli_codex.CodexCLI(model="x", effort="high")._argv("p", None, None)
+        argv = cli_codex.CodexCLI(model="x", effort="high")._argv(None, None)
         assert argv[argv.index("-c") + 1] == 'model_reasoning_effort="high"'
+
+    async def test_the_prompt_travels_on_stdin_and_never_in_argv(self):
+        seen = {}
+
+        async def fake_run(argv, *, cwd=None, timeout=0.0, stdin_text=None):
+            seen["argv"], seen["stdin"] = argv, stdin_text
+            return _cli.Completed(fixture("codex_success.ndjson"), "", 0)
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(_cli, "run", fake_run)
+            await cli_codex.CodexCLI(model="x").act(request("the whole transcript"))
+
+        assert seen["stdin"] == "You are Suzanne.\n\nthe whole transcript"
+        assert not any("the whole transcript" in a for a in seen["argv"])
 
     async def test_a_missing_binary_comes_back_as_an_error(self):
         provider = cli_codex.CodexCLI(model="x", bin="codex-does-not-exist")
@@ -262,7 +302,7 @@ class TestKimiCLI:
     async def test_a_parse_failure_reprompts_exactly_once_then_gives_up(self):
         prompts: list[str] = []
 
-        async def fake_run(argv, *, cwd=None, timeout=0.0):
+        async def fake_run(argv, *, cwd=None, timeout=0.0, stdin_text=None):
             prompts.append(argv[argv.index("-p") + 1])
             return _cli.Completed(fixture("kimi_wrong_shape.ndjson"), "", 0)
 
@@ -280,7 +320,7 @@ class TestKimiCLI:
     async def test_a_good_reply_never_reprompts(self):
         calls = 0
 
-        async def fake_run(argv, *, cwd=None, timeout=0.0):
+        async def fake_run(argv, *, cwd=None, timeout=0.0, stdin_text=None):
             nonlocal calls
             calls += 1
             return _cli.Completed(fixture("kimi_success.ndjson"), "", 0)

@@ -8,6 +8,7 @@ reads the same as a non-zero exit.
 from __future__ import annotations
 
 import asyncio
+import errno
 import json
 import os
 import signal
@@ -26,23 +27,35 @@ class Completed:
 
 
 async def run(
-    argv: list[str], *, cwd: str | None = None, timeout: float = DEFAULT_TIMEOUT
+    argv: list[str],
+    *,
+    cwd: str | None = None,
+    timeout: float = DEFAULT_TIMEOUT,
+    stdin_text: str | None = None,
 ) -> Completed:
-    """stdin is closed: codex appends a piped stdin to the prompt as a <stdin> block."""
+    """A prompt belongs in stdin_text: the kernel caps one argv entry at 128k, a prompt is not.
+
+    stdin stays closed without it, or codex appends a piped stdin to the prompt as a
+    <stdin> block.
+    """
     try:
         proc = await asyncio.create_subprocess_exec(
             *argv,
-            stdin=asyncio.subprocess.DEVNULL,
+            stdin=asyncio.subprocess.PIPE if stdin_text is not None else asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=cwd,
             start_new_session=True,
         )
     except (OSError, ValueError) as exc:
+        # phrased to match _OVERFLOW and miss _EXHAUSTED: compact the agent, spare the provider
+        if isinstance(exc, OSError) and exc.errno == errno.E2BIG:
+            return Completed("", "", -1, f"prompt is too long for the {argv[0]} command line")
         return Completed("", "", -1, f"could not start {argv[0]}: {exc}")
 
+    fed = stdin_text.encode() if stdin_text is not None else None
     try:
-        out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        out, err = await asyncio.wait_for(proc.communicate(fed), timeout=timeout)
     except TimeoutError:
         _kill_group(proc)
         await proc.wait()

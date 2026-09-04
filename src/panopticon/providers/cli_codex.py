@@ -3,7 +3,8 @@
 Verified against codex 0.151.0. There is no `--append-system-prompt`, so the system
 prompt is prepended to the user prompt. `--output-schema` goes through OpenAI strict
 mode, which rejects a free-form `args` object, so this adapter uses the strict schema
-where args arrives as a JSON string; `parse_action` decodes it.
+where args arrives as a JSON string; `parse_action` decodes it. The `-` positional is
+codex's documented "read the instructions from stdin", which keeps the prompt out of argv.
 """
 
 from __future__ import annotations
@@ -39,7 +40,7 @@ class CodexCLI:
         self.bin = bin
         self.effort = effort
 
-    def _argv(self, prompt: str, cwd: str | None, schema_path: str | None) -> list[str]:
+    def _argv(self, cwd: str | None, schema_path: str | None) -> list[str]:
         argv = [
             self.bin,
             "exec",
@@ -59,7 +60,7 @@ class CodexCLI:
             argv += ["-c", f'model_reasoning_effort="{self.effort}"']
         if schema_path is not None:
             argv += ["--output-schema", schema_path]
-        return [*argv, prompt]
+        return [*argv, "-"]
 
     async def act(self, req: TurnRequest) -> TurnResponse:
         schema = strict_action_schema(req.tools)
@@ -67,8 +68,13 @@ class CodexCLI:
             json.dump(schema, fh)
             path = fh.name
         try:
-            argv = self._argv(f"{req.system}\n\n{req.prompt}", req.cwd, path)
-            done = await _cli.run(argv, cwd=req.cwd, timeout=self.timeout)
+            argv = self._argv(req.cwd, path)
+            done = await _cli.run(
+                argv,
+                cwd=req.cwd,
+                timeout=self.timeout,
+                stdin_text=f"{req.system}\n\n{req.prompt}",
+            )
         finally:
             os.unlink(path)
         if done.error:
@@ -76,8 +82,8 @@ class CodexCLI:
         return parse_output(done.stdout, req.tools, code=done.code, stderr=done.stderr)
 
     async def summarize(self, system: str, text: str) -> str | None:
-        argv = self._argv(f"{system}\n\n{text}", None, None)
-        done = await _cli.run(argv, timeout=self.timeout)
+        argv = self._argv(None, None)
+        done = await _cli.run(argv, timeout=self.timeout, stdin_text=f"{system}\n\n{text}")
         if done.error:
             return None
         message, error, _ = _scan(done.stdout)
