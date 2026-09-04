@@ -435,7 +435,7 @@ async def test_a_malformed_answer_still_kills_an_agent_that_never_recovers(tmp_p
         {"Ada": "mock", "Bo": "mock", "Cy": "mock"},
     )
     run = asyncio.create_task(orch.run())
-    await asyncio.wait_for(run, 10)
+    await asyncio.wait_for(run, 30)
 
     assert all(a.situation is Situation.DEAD for a in orch.agents.values())
     assert orch.stopped_because == "every agent is gone"

@@ -11,7 +11,7 @@ from panopticon.model import Shout
 
 
 class Bus:
-    DEBOUNCE_SECONDS = 180
+    DEBOUNCE_SECONDS = 3
     MAX_BATCH_SECONDS = 600
     MAX_AGE_SECONDS = 3600
     MAX_TOKENS = 10_000

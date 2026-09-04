@@ -48,6 +48,8 @@ from panopticon.tools import dispatch, tools_for
 MAX_CONSECUTIVE_FAILURES = 4
 AUTOSAVE_SECONDS = 30
 IDLE_POKE_SECONDS = 900
+# agents start apart so the first cohort reads each other's work instead of duplicating it
+STAGGER_SECONDS = 5
 
 # a provider is cooled after this many failures in a row, counted across every agent on it
 PROVIDER_STRIKES = 3
@@ -124,8 +126,8 @@ class Orchestrator:
             asyncio.create_task(self._autosave(), name="autosave"),
             asyncio.create_task(self._idle_watchdog(), name="watchdog"),
         ]
-        for agent in self.agents.values():
-            self._launch_loop(agent)
+        for i, agent in enumerate(self.agents.values()):
+            self._launch_loop(agent, delay=i * STAGGER_SECONDS)
         try:
             await self._stop.wait()
         finally:
@@ -162,12 +164,16 @@ class Orchestrator:
         )
         self.emit(Event("session", "the human forced an end"))
 
-    def _launch_loop(self, agent: Agent) -> None:
-        self._loops[agent.name] = asyncio.create_task(self._loop(agent), name=f"agent:{agent.name}")
+    def _launch_loop(self, agent: Agent, delay: float = 0.0) -> None:
+        self._loops[agent.name] = asyncio.create_task(
+            self._loop(agent, delay), name=f"agent:{agent.name}"
+        )
 
     # the turn loop
 
-    async def _loop(self, agent: Agent) -> None:
+    async def _loop(self, agent: Agent, delay: float = 0.0) -> None:
+        if delay:
+            await asyncio.sleep(delay)
         overflowed = False
         while agent.alive and not self._pausing and not self._stop.is_set():
             await asyncio.sleep(
